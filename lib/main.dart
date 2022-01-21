@@ -14,6 +14,7 @@ import 'package:testwindowsapp/blockchain.dart';
 import 'package:testwindowsapp/blockchain_server.dart';
 import 'package:testwindowsapp/message_handler.dart';
 import 'package:window_size/window_size.dart';
+import 'package:retrieval/trie.dart';
 
 void logLoginTime() async {
   DateTime time = DateTime.now();
@@ -64,7 +65,7 @@ class MyApp extends StatelessWidget {
       title: 'Shr: Cloud sharing platform',
       theme: ThemeData(
           primarySwatch: Colors.blue,
-          textTheme: GoogleFonts.robotoMonoTextTheme()),
+          textTheme: GoogleFonts.jetBrainsMonoTextTheme()),
       home: MyHomePage(),
     );
   }
@@ -80,8 +81,11 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   GlobalKey<FormState> searchKey = GlobalKey();
   bool searchVisible = false;
+  bool autoCompleteVisible = false;
   bool searchMode = false;
-  final int port = Random().nextInt(3000);
+  List<String> fileNames = [];
+  List<String> searchResults = [];
+  final trie = Trie();
 
   Widget createTopNavBarButton(String text, IconData btnIcon, Function action) {
     return TextButton(
@@ -108,17 +112,18 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  void partitionFile(PlatformFile file) async {
+  void partitionFile(PlatformFile file, FilePickerResult result) async {
     int partitions = 10;
 
     String fileExtension = file.extension;
     String fileName =
         file.name.substring(0, file.name.length - fileExtension.length);
-    String filePath = file.path;
+    String filePath = (file.path).toString().substring(
+        0, (file.path).toString().length - result.files.single.name.length);
     String filePathWithoutFileName =
         filePath.substring(0, filePath.length - file.name.length);
 
-    final readFile = await File(filePath).open();
+    final readFile = await File(file.path).open();
 
     int chunkSize = (await readFile.length()) ~/ partitions;
 
@@ -128,36 +133,37 @@ class _MyHomePageState extends State<MyHomePage> {
       List<int> encodedFile;
       if (i == partitions - 1) {
         encodedFile = GZipCodec().encode(
-            (Uint8List.fromList(await File(filePath).readAsBytes()))
+            (Uint8List.fromList(await File(file.path).readAsBytes()))
                 .getRange(last_i, await readFile.length())
                 .toList());
       } else {
         encodedFile = GZipCodec().encode(
-            (Uint8List.fromList(await File(filePath).readAsBytes()))
+            (Uint8List.fromList(await File(file.path).readAsBytes()))
                 .getRange(last_i, last_i + chunkSize)
                 .toList());
       }
-      File newFile = await File("C:/Users/Owner/Desktop/echo/$i").create();
+      File newFile = await File("$filePath$i").create();
       await newFile.writeAsBytes(encodedFile);
       last_i += chunkSize;
       bytes.add(encodedFile);
     }
-    Block newBlock = Block();
-    newBlock.createBlockHash(bytes);
+    BlockChain.createNewBlock(bytes, file, result, partitions);
+    setState(() {});
 
     MessageHandler.showToast(context, "Partition success");
   }
 
   void combine() async {
     int parts = 10;
+    String selectedDirectory = await FilePicker.platform.getDirectoryPath();
 
     String fileAddress = await selectSavePath(context);
 
     File createdFile = File(fileAddress);
     List<int> shardData = [];
     for (int i = 0; i < parts; i++) {
-      for (var shardByteData in (GZipCodec().decode(
-          await File("C:/Users/Owner/Desktop/echo/$i").readAsBytes()))) {
+      for (var shardByteData in (GZipCodec()
+          .decode(await File("$selectedDirectory/$i").readAsBytes()))) {
         shardData.add(shardByteData);
       }
     }
@@ -167,10 +173,28 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void toggleSeachVisibility() {
+    searchResults.clear();
+
     setState(() {
       searchVisible = !searchVisible;
       searchMode = !searchMode;
     });
+  }
+
+  void searchKeyword(String keyword) {
+    searchResults.clear();
+    setState(() {
+      searchResults.addAll(trie.find(keyword));
+    });
+  }
+
+  void downloadFile(String fileName) async {
+    Map<String, dynamic> blockData = getBlockchain()["blocks"][fileName];
+    var formData = FormData.fromMap({"ip": "BlockchainServer(context).ip"});
+
+    print("http://${blockData['shardHosts']["0"]}/download");
+    await Dio().post("http://${blockData['shardHosts']["0"]}/download",
+        data: formData);
   }
 
   Future<void> _showMyDialog() async {
@@ -245,8 +269,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
     try {
       var formData = FormData.fromMap({
-        "file": MultipartFile.fromBytes(
-            utf8.encode((await File(_platformFile.path).readAsBytes()).toString()))
+        "file": MultipartFile.fromBytes(utf8
+            .encode((await File(_platformFile.path).readAsBytes()).toString()))
       });
 
       await Dio().post("http://localhost:$portNum/upload", data: formData);
@@ -284,6 +308,49 @@ class _MyHomePageState extends State<MyHomePage> {
         });
   }
 
+  Map<String, dynamic> getBlockchain() {
+    return BlockChain.toJson();
+  }
+
+  Widget displayBlockchainFiles() {
+    return ListView.builder(
+        shrinkWrap: true,
+        itemCount: fileNames.length,
+        itemBuilder: (context, index) {
+          return InkWell(
+            onTap: () {},
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                    alignment: Alignment.center,
+                    margin: const EdgeInsets.only(left: 20),
+                    child: Text(
+                      fileNames[index],
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 13),
+                    )),
+                Expanded(
+                  child: Container(
+                    margin: const EdgeInsets.only(right: 20),
+                    alignment: Alignment.centerRight,
+                    // color: Colors.red,
+                    child: IconButton(
+                      splashRadius: 10,
+                      icon: const Icon(
+                        Icons.download,
+                        size: 12,
+                      ),
+                      onPressed: () {},
+                    ),
+                  ),
+                )
+              ],
+            ),
+          );
+        });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -292,6 +359,15 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    Map<String, dynamic> blockchain = getBlockchain();
+    fileNames.clear();
+
+    blockchain["blocks"].forEach((key, value) {
+      trie.insert(key);
+
+      fileNames.add(key);
+    });
+
     return SafeArea(
       child: Scaffold(
         backgroundColor: Colors.white,
@@ -305,30 +381,29 @@ class _MyHomePageState extends State<MyHomePage> {
                 children: [
                   createTopNavBarButton(
                       "SEARCH", Icons.search, toggleSeachVisibility),
-                  createTopNavBarButton("UPLOAD", Icons.upload_file, () async {
+                  createTopNavBarButton(
+                      "PARTITION", Icons.dashboard_customize_outlined,
+                      () async {
                     FilePickerResult result =
                         await FilePicker.platform.pickFiles();
 
                     if (result != null) {
                       PlatformFile fileData = result.files.single;
-                      print(result.files.single.extension);
-                      print((fileData.path).toString().substring(
-                          0,
-                          (fileData.path).toString().length -
-                              result.files.single.name.length));
+
                       File file = File((fileData.path).toString());
-                      partitionFile(fileData);
+                      partitionFile(fileData, result);
                     } else {
                       // User canceled the picker
                     }
                   }),
-                  createTopNavBarButton("COMBINE", Icons.search, () {
+                  createTopNavBarButton("COMBINE", Icons.view_in_ar, () {
                     combine();
                   }),
-                  createTopNavBarButton("SEND FILE", Icons.upload, () {
+                  createTopNavBarButton("SEND FILE", Icons.send, () {
                     sendFile();
                   }),
-                  SelectableText(BlockchainServer.port.toString()),
+                  SelectableText(
+                      "port number: ${BlockchainServer.port.toString()}"),
                   Expanded(
                     child: Container(),
                   ),
@@ -343,17 +418,23 @@ class _MyHomePageState extends State<MyHomePage> {
             Container(height: 1, color: Colors.grey[100]),
             Stack(
               children: [
-                SizedBox(
-                  height: 40,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Container(
-                        margin: const EdgeInsets.only(left: 20),
-                        child: const Text(
-                          "Recently shared",
-                          style: TextStyle(fontSize: 12),
-                        )),
-                  ),
+                Column(
+                  children: [
+                    SizedBox(
+                      height: 40,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Container(
+                            margin: const EdgeInsets.only(left: 20),
+                            child: const Text(
+                              "Recently shared",
+                              style: TextStyle(
+                                  fontSize: 12, fontWeight: FontWeight.bold),
+                            )),
+                      ),
+                    ),
+                    Container(height: 1, color: Colors.grey[100]),
+                  ],
                 ),
                 Visibility(
                   visible: searchVisible,
@@ -377,6 +458,20 @@ class _MyHomePageState extends State<MyHomePage> {
                                     alignment: Alignment.centerLeft,
                                     margin: const EdgeInsets.only(left: 10),
                                     child: TextFormField(
+                                      onChanged: (value) {
+                                        if (value.isEmpty) {
+                                          setState(() {
+                                            autoCompleteVisible = false;
+                                          });
+                                        } else {
+                                          searchKeyword(value);
+                                          setState(() {
+                                            if (searchResults.isNotEmpty) {
+                                              autoCompleteVisible = true;
+                                            }
+                                          });
+                                        }
+                                      },
                                       scrollPadding: EdgeInsets.zero,
                                       style: const TextStyle(fontSize: 12),
                                       decoration: const InputDecoration(
@@ -405,101 +500,56 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
                   ),
                 ),
+                Visibility(
+                  visible: searchVisible && autoCompleteVisible,
+                  child: Container(
+                    margin: const EdgeInsets.only(top: 43),
+                    child: Column(
+                      children: [
+                        ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: searchResults.length,
+                            itemBuilder: (context, index) {
+                              return InkWell(
+                                onTap: () {
+                                  downloadFile(searchResults[index]);
+                                },
+                                child: Row(
+                                  children: [
+                                    Container(
+                                        padding: const EdgeInsets.only(
+                                            top: 10, bottom: 10, left: 20),
+                                        child: Text(searchResults[index])),
+                                    Expanded(child: Container()),
+                                    Container(
+                                        margin:
+                                            const EdgeInsets.only(right: 10),
+                                        child: const Text("click to download",
+                                            style: TextStyle(
+                                                fontSize: 10,
+                                                color: Colors.green)))
+                                  ],
+                                ),
+                              );
+                            }),
+                        Container(
+                            alignment: Alignment.centerLeft,
+                            margin: EdgeInsets.only(left: 20, bottom: 5),
+                            child: Text("Search results",
+                                style: TextStyle(
+                                    color: Colors.grey, fontSize: 10))),
+                        Container(height: 1, color: Colors.grey[100]),
+                      ],
+                    ),
+                    // color: const Color(0xFFFFFDE7)
+                  ),
+                ),
               ],
             ),
-            Container(height: 1, color: Colors.grey[100]),
-            InkWell(
-              onTap: () {},
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                          alignment: Alignment.topLeft,
-                          margin: const EdgeInsets.only(left: 20, top: 5),
-                          child: const Text(
-                            "File A",
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 13),
-                          )),
-                      Container(
-                          alignment: Alignment.topLeft,
-                          margin: const EdgeInsets.only(
-                              left: 20, right: 50, top: 2),
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: const Text(
-                            "File description",
-                            style: TextStyle(fontSize: 11),
-                          )),
-                    ],
-                  ),
-                  Expanded(
-                    child: Container(
-                      margin: const EdgeInsets.only(right: 20),
-                      alignment: Alignment.centerRight,
-                      // color: Colors.red,
-                      child: IconButton(
-                        splashRadius: 10,
-                        icon: const Icon(
-                          Icons.download,
-                          size: 12,
-                        ),
-                        onPressed: () {},
-                      ),
-                    ),
-                  )
-                ],
-              ),
-            ),
-            InkWell(
-              onTap: () {
-                _showMyDialog();
-              },
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                          alignment: Alignment.topLeft,
-                          margin: const EdgeInsets.only(left: 20, top: 5),
-                          child: const Text(
-                            "File A",
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 13),
-                          )),
-                      Container(
-                          alignment: Alignment.topLeft,
-                          margin: const EdgeInsets.only(
-                              left: 20, right: 50, top: 2),
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: const Text(
-                            "File description",
-                            style: TextStyle(fontSize: 11),
-                          )),
-                    ],
-                  ),
-                  Expanded(
-                    child: Container(
-                      margin: const EdgeInsets.only(right: 20),
-                      alignment: Alignment.centerRight,
-                      // color: Colors.red,
-                      child: IconButton(
-                        splashRadius: 10,
-                        icon: const Icon(
-                          Icons.download,
-                          size: 12,
-                        ),
-                        onPressed: () {},
-                      ),
-                    ),
-                  )
-                ],
-              ),
-            ),
+            fileNames.isNotEmpty
+                ? displayBlockchainFiles()
+                : Expanded(
+                    child: Container(child: Center(child: Text("No files"))))
           ],
         ),
       ),

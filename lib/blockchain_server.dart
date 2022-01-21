@@ -12,11 +12,13 @@ import 'package:testwindowsapp/message_handler.dart';
 import "package:upnp/router.dart" as router;
 import 'package:upnp/upnp.dart' as upnp;
 import 'main.dart';
+import 'package:file_picker/file_picker.dart';
 
 class BlockchainServer {
   BuildContext context;
   NetworkInfo _networkInfo;
   static final port = Random().nextInt(60000);
+  String ip;
 
   BlockchainServer(this.context) {
     _networkInfo = NetworkInfo();
@@ -24,6 +26,7 @@ class BlockchainServer {
 
   void startServer() async {
     var app = shelf_router.Router();
+    ip = await NetworkInfo().getWifiIP();
 
     app.get("/", (Request request) async {
       return Response.ok('hello-world');
@@ -34,13 +37,25 @@ class BlockchainServer {
         await for (final formData in request.multipartFormData)
           formData.name: await formData.part.readString(),
       };
+
       String savePath = await selectSavePath(context);
       List<int> byteArray = List.from(json.decode(parameters["file"]));
-      File("C:/Users/Owner/Desktop").writeAsBytes(byteArray);
+      File(savePath).writeAsBytes(byteArray);
       return Response.ok('hello-world');
     });
 
-    var server = await io.serve(app, 'localhost', port);
+    app.post("/download", (Request request) async {
+      final parameters = <String, String>{
+        await for (final formData in request.multipartFormData)
+          formData.name: await formData.part.readString(),
+      };
+
+      MessageHandler.showSuccessMessage(
+          context, "${parameters["ip"]} is requesting a file");
+      return Response.ok("done");
+    });
+
+    var server = await io.serve(app, ip, port);
     MessageHandler.showSuccessMessage(context, "Server started");
     // mapPort();
   }
