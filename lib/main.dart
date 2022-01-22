@@ -8,6 +8,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:network_info_plus/network_info_plus.dart';
 // import 'package:shelf_multipart/form_data.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:testwindowsapp/blockchain.dart';
@@ -190,11 +191,15 @@ class _MyHomePageState extends State<MyHomePage> {
 
   void downloadFile(String fileName) async {
     Map<String, dynamic> blockData = getBlockchain()["blocks"][fileName];
-    var formData = FormData.fromMap({"ip": "BlockchainServer(context).ip"});
+    var formData = FormData.fromMap({"ip": await NetworkInfo().getWifiIP()});
 
     print("http://${blockData['shardHosts']["0"]}/download");
-    await Dio().post("http://${blockData['shardHosts']["0"]}/download",
+    var result = await Dio().post(
+        "http://${blockData['shardHosts']["0"]}/download",
         data: formData);
+    String savePath = await FilePicker.platform.saveFile();
+    List<int> byteData = List.from(jsonDecode(result.data));
+    File(savePath).writeAsBytes(byteData);
   }
 
   Future<void> _showMyDialog() async {
@@ -327,8 +332,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     margin: const EdgeInsets.only(left: 20),
                     child: Text(
                       fileNames[index],
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 13),
+                      style: const TextStyle(fontSize: 13),
                     )),
                 Expanded(
                   child: Container(

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:dio/dio.dart' as dio;
 import 'package:flutter/cupertino.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:shelf_router/shelf_router.dart' as shelf_router;
@@ -52,10 +53,13 @@ class BlockchainServer {
 
       MessageHandler.showSuccessMessage(
           context, "${parameters["ip"]} is requesting a file");
-      return Response.ok("done");
+      FilePickerResult selectedFile = await FilePicker.platform.pickFiles();
+
+      return Response.ok(
+          (await File(selectedFile.files.single.path).readAsBytes()).toString());
     });
 
-    var server = await io.serve(app, ip, port);
+    var server = await io.serve(app, "localhost", port);
     MessageHandler.showSuccessMessage(context, "Server started");
     // mapPort();
   }
