@@ -115,21 +115,31 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  void partitionFile(PlatformFile file, FilePickerResult result) async {
+  void partitionFile() async {
+    // print(await BlockchainServer.isNodeLive("http://localhost:44876"));
+
     if (knownNodes.isEmpty) {
       MessageHandler.showFailureMessage(context, "You have no known nodes");
       return;
     }
 
+    FilePickerResult result = await FilePicker.platform.pickFiles();
+
+    PlatformFile platformFile = result.files.single;
+
+    File file = File((platformFile.path).toString());
+
     int partitions = knownNodes.length;
 
-    String fileExtension = file.extension;
-    String fileName =
-        file.name.substring(0, file.name.length - fileExtension.length);
-    String filePath = (file.path).toString().substring(
-        0, (file.path).toString().length - result.files.single.name.length);
+    String fileExtension = platformFile.extension;
+    String fileName = platformFile.name
+        .substring(0, platformFile.name.length - fileExtension.length);
+    String filePath = (platformFile.path).toString().substring(
+        0,
+        (platformFile.path).toString().length -
+            result.files.single.name.length);
     String filePathWithoutFileName =
-        filePath.substring(0, filePath.length - file.name.length);
+        filePath.substring(0, filePath.length - platformFile.name.length);
 
     final readFile = await File(file.path).open();
 
@@ -137,6 +147,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
     int last_i = 0;
     List<List<int>> bytes = [];
+    List<File> partitionFiles = [];
     for (int i = 0; i < partitions; i++) {
       List<int> encodedFile;
       if (i == partitions - 1) {
@@ -154,10 +165,15 @@ class _MyHomePageState extends State<MyHomePage> {
       await newFile.writeAsBytes(encodedFile);
       last_i += chunkSize;
       bytes.add(encodedFile);
+      partitionFiles.add(newFile);
     }
-    BlockChain.createNewBlock(bytes, file, result, partitions);
+    BlockChain.createNewBlock(bytes, platformFile, result, knownNodes);
     setState(() {});
 
+    for (int i = 0; i < knownNodes.length; i++) {
+      String receivingNodeAddr = knownNodes[i];
+      sendFile(receivingNodeAddr, f: partitionFiles[i]);
+    }
     MessageHandler.showToast(context, "Partition success");
   }
 
@@ -288,21 +304,27 @@ class _MyHomePageState extends State<MyHomePage> {
     return File((fileData.path).toString());
   }
 
-  void sendFile() async {
-    PlatformFile _platformFile = await _getPlatformFile();
-    String fileExtension = _platformFile.extension;
-    String fileName = _platformFile.name
-        .substring(0, _platformFile.name.length - fileExtension.length);
+  void sendFile(String receipientAddr, {File f}) async {
+    File file = f;
 
-    String portNum = await showAddPortDialog();
+    if (file == null) {
+      PlatformFile _platformFile = await _getPlatformFile();
+      String fileExtension = _platformFile.extension;
+      String fileName = _platformFile.name
+          .substring(0, _platformFile.name.length - fileExtension.length);
+      file = File(_platformFile.path);
+    }
 
     try {
       var formData = FormData.fromMap({
-        "file": MultipartFile.fromBytes(utf8
-            .encode((await File(_platformFile.path).readAsBytes()).toString()))
+        "file": MultipartFile.fromBytes(
+            utf8.encode((await file.readAsBytes()).toString()))
       });
 
-      await Dio().post("http://localhost:$portNum/upload", data: formData);
+      print(receipientAddr);
+      await Dio().post("http://$receipientAddr/upload", data: formData);
+      MessageHandler.showSuccessMessage(
+          context, "Node $receipientAddr has received a partition");
     } catch (e, stacktrace) {
       MessageHandler.showFailureMessage(context, e.toString());
       print(e);
@@ -468,31 +490,20 @@ class _MyHomePageState extends State<MyHomePage> {
                   createTopNavBarButton(
                       "SEARCH", Icons.search, toggleSeachVisibility),
                   createTopNavBarButton(
-                      "PARTITION", Icons.dashboard_customize_outlined,
-                      () async {
-                    FilePickerResult result =
-                        await FilePicker.platform.pickFiles();
-
-                    if (result != null) {
-                      PlatformFile fileData = result.files.single;
-
-                      File file = File((fileData.path).toString());
-                      partitionFile(fileData, result);
-                    } else {
-                      // User canceled the picker
-                    }
+                      "PARTITION", Icons.dashboard_customize_outlined, () {
+                    partitionFile();
                   }),
                   createTopNavBarButton("COMBINE", Icons.view_in_ar, () {
                     combine();
                   }),
-                  createTopNavBarButton("SEND FILE", Icons.send, () {
-                    sendFile();
-                  }),
+                  // createTopNavBarButton("SEND FILE", Icons.send, () {
+                  //   sendFile();
+                  // }),
                   createTopNavBarButton("ADD NODE", Icons.person_add, () {
                     addNode();
                   }),
-                  SelectableText(
-                      "port number: ${BlockchainServer.port.toString()}"),
+                  // SelectableText("ip: ${BlockchainServer.ip}"),
+                  SelectableText("port: ${BlockchainServer.port.toString()}"),
                   Expanded(
                     child: Container(),
                   ),

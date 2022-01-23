@@ -9,6 +9,7 @@ import 'package:dart_merkle_lib/dart_merkle_lib.dart';
 import 'package:dart_merkle_lib/src/fast_root.dart';
 import 'package:dart_merkle_lib/src/proof.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:network_info_plus/network_info_plus.dart';
 import 'package:testwindowsapp/blockchain_server.dart';
 
 class BlockChain {
@@ -17,23 +18,26 @@ class BlockChain {
   static List<_Block> blocks = [_Block.genesis()];
 
   static void createNewBlock(List<List<int>> shardByteData, PlatformFile file,
-      FilePickerResult result, int shardsCreated) {
+      FilePickerResult result, List<String> knownNodes) async {
     String fileName = getFileName(file, result);
     int fileSizeBytes = file.size;
     double eventCost = 2;
-    Map<String, String> shardHosts = {
-      "0": "localhost:${BlockchainServer.port}"
-    };
+    Map<String, String> shardHosts = {};
+
+    for (int i = 0; i < knownNodes.length; i++) {
+      shardHosts["$fileName$i"] = knownNodes[i];
+    }
+
     int timeCreated = DateTime.now().millisecondsSinceEpoch;
-    String fileHost = "localhost:${BlockchainServer.port}";
+    String fileHost =
+        "${await NetworkInfo().getWifiIP()}:${BlockchainServer.port}";
     String merkleHashSalt = _Block.getRandString();
-    String merkleHash = _Block.createBlockHash(shardByteData, merkleHashSalt);
-    String prevBlockHash = "";
+    String prevBlockHash = blocks[blocks.length - 1].merkleTreeRootHash;
 
     _Block newBlock = _Block(
         fileName,
         fileSizeBytes,
-        shardsCreated,
+        knownNodes.length,
         eventCost,
         shardHosts,
         timeCreated,
@@ -81,7 +85,7 @@ class _Block {
   static const int saltLength = 10;
 
   void init() {
-    merkleTreeRootHash = createBlockHash(shardByteData, salt);
+    merkleTreeRootHash = createBlockHash(shardByteData, salt, prevBlockHash);
   }
 
   _Block(
@@ -123,7 +127,8 @@ class _Block {
     return base64UrlEncode(values);
   }
 
-  static String createBlockHash(List<List<int>> shardByteData, String salt) {
+  static String createBlockHash(
+      List<List<int>> shardByteData, String salt, String prevHash) {
     List<String> hashedData = [];
 
     if (shardByteData.isNotEmpty) {
@@ -136,8 +141,9 @@ class _Block {
           hashedData.map((e) => Uint8List.fromList(hex.decode(e))).toList();
       Uint8List root = fastRoot(hashedByteData, sha256);
       String merkleRoot = hex.encode(root);
-      String merkleRootAndKey =
-          crypto.sha256.convert((merkleRoot + salt).runes.toList()).toString();
+      String merkleRootAndKey = crypto.sha256
+          .convert((merkleRoot + salt + prevHash).runes.toList())
+          .toString();
 
       return merkleRootAndKey;
     }

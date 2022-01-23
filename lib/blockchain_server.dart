@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:dio/dio.dart' as dio;
 import 'package:flutter/cupertino.dart';
 import 'package:network_info_plus/network_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shelf_router/shelf_router.dart' as shelf_router;
 import 'package:shelf/shelf.dart';
 import 'package:shelf_multipart/form_data.dart';
@@ -19,10 +20,19 @@ class BlockchainServer {
   BuildContext context;
   NetworkInfo _networkInfo;
   static final port = Random().nextInt(60000);
-  String ip;
+  static String ip;
 
   BlockchainServer(this.context) {
     _networkInfo = NetworkInfo();
+  }
+
+  static Future<bool> isNodeLive(String addr) async {
+    try {
+      final result = dio.Dio().get(addr);
+      return (await result).data != null;
+    } catch (_) {
+      return false;
+    }
   }
 
   void startServer() async {
@@ -39,9 +49,10 @@ class BlockchainServer {
           formData.name: await formData.part.readString(),
       };
 
-      String savePath = await selectSavePath(context);
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      String savePath = prefs.getString("storage_location");
       List<int> byteArray = List.from(json.decode(parameters["file"]));
-      File(savePath).writeAsBytes(byteArray);
+      File("$savePath/test.txt").writeAsBytes(byteArray);
       return Response.ok('hello-world');
     });
 
@@ -56,7 +67,8 @@ class BlockchainServer {
       FilePickerResult selectedFile = await FilePicker.platform.pickFiles();
 
       return Response.ok(
-          (await File(selectedFile.files.single.path).readAsBytes()).toString());
+          (await File(selectedFile.files.single.path).readAsBytes())
+              .toString());
     });
 
     var server = await io.serve(app, "localhost", port);
