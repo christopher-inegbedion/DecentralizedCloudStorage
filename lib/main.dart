@@ -17,16 +17,19 @@ import 'package:testwindowsapp/message_handler.dart';
 import 'package:window_size/window_size.dart';
 import 'package:retrieval/trie.dart';
 
+const String lastLoginTimeKey = "last_login_time";
+const String storageLocationKey = "storage_location";
+
 void logLoginTime() async {
   DateTime time = DateTime.now();
   SharedPreferences prefs = await SharedPreferences.getInstance();
   print(time.millisecondsSinceEpoch);
-  prefs.setInt("last_login_time", time.millisecondsSinceEpoch);
+  prefs.setInt(lastLoginTimeKey, time.millisecondsSinceEpoch);
 }
 
 void getLastLoginTime() async {
   SharedPreferences prefs = await SharedPreferences.getInstance();
-  print(prefs.getInt("last_login_time"));
+  print(prefs.getInt(lastLoginTimeKey));
 }
 
 Future<String> selectSavePath(BuildContext context) async {
@@ -48,8 +51,6 @@ void main() {
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     setWindowMinSize(const Size(800, 700));
     setWindowMaxSize(const Size(800, 700));
-    // setWindowMaxSize(size)
-    // setWindowMaxSize(Size.infinite);
   }
   getLastLoginTime();
   logLoginTime();
@@ -63,7 +64,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Shr: Cloud sharing platform',
+      title: 'Shr: Cloud storage platform',
       theme: ThemeData(
           primarySwatch: Colors.blue,
           textTheme: GoogleFonts.jetBrainsMonoTextTheme()),
@@ -86,6 +87,7 @@ class _MyHomePageState extends State<MyHomePage> {
   bool searchMode = false;
   List<String> fileNames = [];
   List<String> searchResults = [];
+  List<String> knownNodes = [];
   final trie = Trie();
 
   Widget createTopNavBarButton(String text, IconData btnIcon, Function action) {
@@ -114,7 +116,12 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void partitionFile(PlatformFile file, FilePickerResult result) async {
-    int partitions = 10;
+    if (knownNodes.isEmpty) {
+      MessageHandler.showFailureMessage(context, "You have no known nodes");
+      return;
+    }
+
+    int partitions = knownNodes.length;
 
     String fileExtension = file.extension;
     String fileName =
@@ -202,6 +209,23 @@ class _MyHomePageState extends State<MyHomePage> {
     File(savePath).writeAsBytes(byteData);
   }
 
+  void requestStorageLocationDialog() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+
+    if (prefs.getString(storageLocationKey) == null) {
+      String path = await FilePicker.platform.getDirectoryPath();
+
+      if (path == null) {
+        MessageHandler.showFailureMessage(
+            context, "Storage location is required");
+        requestStorageLocationDialog();
+        return;
+      }
+
+      prefs.setString(storageLocationKey, path);
+    }
+  }
+
   Future<void> _showMyDialog() async {
     return showDialog<void>(
       context: context,
@@ -270,7 +294,7 @@ class _MyHomePageState extends State<MyHomePage> {
     String fileName = _platformFile.name
         .substring(0, _platformFile.name.length - fileExtension.length);
 
-    String portNum = await showDialogInput();
+    String portNum = await showAddPortDialog();
 
     try {
       var formData = FormData.fromMap({
@@ -285,7 +309,7 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  Future<String> showDialogInput() {
+  Future<String> showAddPortDialog() {
     TextEditingController _textEditingController = TextEditingController();
 
     return showDialog(
@@ -306,6 +330,49 @@ class _MyHomePageState extends State<MyHomePage> {
                 child: const Text('OK'),
                 onPressed: () {
                   Navigator.pop(context, _textEditingController.text);
+                },
+              ),
+            ],
+          );
+        });
+  }
+
+  Future<List> showAddNodeDialog() {
+    TextEditingController _textIPController = TextEditingController();
+    TextEditingController _textPortController = TextEditingController();
+
+    return showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('New node'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  onChanged: (value) {},
+                  keyboardType: TextInputType.number,
+                  controller: _textIPController,
+                  decoration:
+                      const InputDecoration(hintText: "Enter IP address"),
+                ),
+                TextField(
+                  onChanged: (value) {},
+                  keyboardType: TextInputType.number,
+                  controller: _textPortController,
+                  decoration:
+                      const InputDecoration(hintText: "Enter port number"),
+                ),
+              ],
+            ),
+            actions: <Widget>[
+              FlatButton(
+                color: Colors.green,
+                textColor: Colors.white,
+                child: const Text('OK'),
+                onPressed: () {
+                  Navigator.pop(context,
+                      [_textIPController.text, _textPortController.text]);
                 },
               ),
             ],
@@ -355,10 +422,25 @@ class _MyHomePageState extends State<MyHomePage> {
         });
   }
 
+  void addNode() async {
+    try {
+      List result = await showAddNodeDialog();
+      String ipAddress = result[0];
+      String portNumber = result[1];
+
+      knownNodes.add("$ipAddress:$portNumber");
+      MessageHandler.showSuccessMessage(
+          context, "$ipAddress:$portNumber is now a known node");
+    } catch (e, stacktrace) {
+      MessageHandler.showFailureMessage(context, e.toString());
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     BlockchainServer(context).startServer();
+    requestStorageLocationDialog();
   }
 
   @override
@@ -406,16 +488,19 @@ class _MyHomePageState extends State<MyHomePage> {
                   createTopNavBarButton("SEND FILE", Icons.send, () {
                     sendFile();
                   }),
+                  createTopNavBarButton("ADD NODE", Icons.person_add, () {
+                    addNode();
+                  }),
                   SelectableText(
                       "port number: ${BlockchainServer.port.toString()}"),
                   Expanded(
                     child: Container(),
                   ),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: createTopNavBarButton(
-                        "DOWNLOAD PROGRESS", Icons.download, () {}),
-                  )
+                  // Align(
+                  //   alignment: Alignment.centerRight,
+                  //   child: createTopNavBarButton(
+                  //       "DOWNLOAD PROGRESS", Icons.download, () {}),
+                  // )
                 ],
               )),
             ),
