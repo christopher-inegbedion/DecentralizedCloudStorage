@@ -30,6 +30,7 @@ void logLoginTime() async {
 void getLastLoginTime() async {
   SharedPreferences prefs = await SharedPreferences.getInstance();
   print(prefs.getInt(lastLoginTimeKey));
+  print(prefs.getString(storageLocationKey));
 }
 
 Future<String> selectSavePath(BuildContext context) async {
@@ -321,7 +322,7 @@ class _MyHomePageState extends State<MyHomePage> {
             utf8.encode((await file.readAsBytes()).toString()))
       });
 
-      print(receipientAddr);
+      print("http://$receipientAddr/upload");
       await Dio().post("http://$receipientAddr/upload", data: formData);
       MessageHandler.showSuccessMessage(
           context, "Node $receipientAddr has received a partition");

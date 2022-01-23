@@ -44,6 +44,7 @@ class BlockchainServer {
     });
 
     app.post('/upload', (Request request) async {
+      print("sfsdf");
       final parameters = <String, String>{
         await for (final formData in request.multipartFormData)
           formData.name: await formData.part.readString(),
@@ -71,7 +72,7 @@ class BlockchainServer {
               .toString());
     });
 
-    var server = await io.serve(app, "localhost", port);
+    var server = await io.serve(app, ip, port);
     MessageHandler.showSuccessMessage(context, "Server started");
     // mapPort();
   }
