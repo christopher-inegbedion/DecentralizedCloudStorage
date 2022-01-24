@@ -183,10 +183,10 @@ class _MyHomePageState extends State<MyHomePage> {
 
     if (!errorOccured) {
       BlockChain.createNewBlock(bytes, platformFile, result, knownNodes);
-      setState(() {});
 
       MessageHandler.showToast(context, "Partition success");
     }
+    setState(() {});
   }
 
   void combine() async {
@@ -230,20 +230,27 @@ class _MyHomePageState extends State<MyHomePage> {
     List<int> fileBytes = [];
     String fileExtension = blockchain["blocks"][fileName]["fileExtension"];
     Map<String, dynamic> shardHosts =
-        jsonDecode(blockchain["blocks"][fileName]["shardHosts"]);
+        blockchain["blocks"][fileName]["shardHosts"];
     var formData = FormData.fromMap({
       "ip": await NetworkInfo().getWifiIP(),
       "fileName": fileName,
       "fileExtension": fileExtension
     });
 
-    String savePath = await FilePicker.platform.saveFile();
-    shardHosts.forEach((key, value) async {
-      var result = await Dio().post("http://$value/download", data: formData);
-      List<int> byteData = List.from(jsonDecode(result.data));
-      fileBytes.addAll(byteData);
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String savePath = prefs.getString("storage_location");
+    shardHosts.forEach((key, value) {
+      Dio().post("http://$value/download", data: formData).then((result) {
+        List<int> byteData = List.from(jsonDecode(result.data));
+        fileBytes.addAll(byteData);
+      }).whenComplete(() {
+        File("C:/Users/Owner/Desktop/echo/${fileName}1.$fileExtension")
+            .writeAsBytes(fileBytes, mode: FileMode.append);
+      });
     });
-    File("$savePath/$fileName.$fileExtension").writeAsBytes(fileBytes);
+
+    MessageHandler.showSuccessMessage(
+        context, "File now available at: $savePath");
   }
 
   void downloadFile(String fileName) async {

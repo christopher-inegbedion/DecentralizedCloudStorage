@@ -68,7 +68,7 @@ class BlockchainServer {
       MessageHandler.showSuccessMessage(
           context, "${parameters["ip"]} is requesting a file");
       File requestingFile = File(
-          "$savePath/${parameters['fileName']}.${parameters['fileExtension']}");
+          "$savePath/${parameters['fileName']}}");
 
       return Response.ok(
           GZipCodec().decode((await requestingFile.readAsBytes())).toString());
