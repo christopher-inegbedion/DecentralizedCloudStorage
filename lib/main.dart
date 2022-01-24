@@ -168,18 +168,29 @@ class _MyHomePageState extends State<MyHomePage> {
       bytes.add(encodedFile);
       partitionFiles.add(newFile);
     }
-    BlockChain.createNewBlock(bytes, platformFile, result, knownNodes);
-    setState(() {});
 
+    bool errorOccured = false;
     for (int i = 0; i < knownNodes.length; i++) {
       String receivingNodeAddr = knownNodes[i];
-      sendFile(receivingNodeAddr, f: partitionFiles[i]);
+      sendFile(receivingNodeAddr, fileName, f: partitionFiles[i])
+          .onError((e, st) {
+        errorOccured = true;
+        MessageHandler.showFailureMessage(
+            context, "An error occured while sending partitions");
+        return;
+      });
     }
-    MessageHandler.showToast(context, "Partition success");
+
+    if (errorOccured) {
+      BlockChain.createNewBlock(bytes, platformFile, result, knownNodes);
+      setState(() {});
+
+      MessageHandler.showToast(context, "Partition success");
+    }
   }
 
   void combine() async {
-    int parts = 10;
+    int parts = knownNodes.length;
     String selectedDirectory = await FilePicker.platform.getDirectoryPath();
 
     String fileAddress = await selectSavePath(context);
@@ -213,6 +224,11 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
+  void downloadFileFromBlockchain(String fileName) {
+    Map<String, dynamic> blockchain = getBlockchain();
+    print(blockchain["blocks"][fileName]);
+  }
+
   void downloadFile(String fileName) async {
     Map<String, dynamic> blockData = getBlockchain()["blocks"][fileName];
     var formData = FormData.fromMap({"ip": await NetworkInfo().getWifiIP()});
@@ -243,34 +259,6 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  Future<void> _showMyDialog() async {
-    return showDialog<void>(
-      context: context,
-      barrierDismissible: false, // user must tap button!
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('AlertDialog Title'),
-          content: SingleChildScrollView(
-            child: ListBody(
-              children: const <Widget>[
-                Text('This is a demo alert dialog.'),
-                Text('Would you like to approve of this message?'),
-              ],
-            ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              child: const Text('Approve'),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   Future<PlatformFile> _getPlatformFile() async {
     FilePickerResult result = await FilePicker.platform.pickFiles();
 
@@ -282,53 +270,38 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  Map<String, String> _getFileDetails(PlatformFile file) {
-    String fileExtension = file.extension;
-    String fileName =
-        file.name.substring(0, file.name.length - fileExtension.length);
-    String filePath = file.path;
-    String filePathWithoutFileName =
-        filePath.substring(0, filePath.length - file.name.length);
-    String filePathWithExtension = file.name;
-
-    return {
-      "fileExtension": fileExtension,
-      "fileName": fileName,
-      "filePath": filePath,
-      "filePathWithoutFileName": filePathWithoutFileName,
-      "filPathWithExtension": filePathWithExtension
-    };
-  }
-
   Future<File> selectFile() async {
     PlatformFile fileData = await _getPlatformFile();
     return File((fileData.path).toString());
   }
 
-  void sendFile(String receipientAddr, {File f}) async {
-    File file = f;
+  Future sendFile(String receipientAddr, String fileName, {File f}) async {
+    if (await BlockchainServer.isNodeLive(receipientAddr)) {
+      File file = f;
 
-    if (file == null) {
-      PlatformFile _platformFile = await _getPlatformFile();
-      String fileExtension = _platformFile.extension;
-      String fileName = _platformFile.name
-          .substring(0, _platformFile.name.length - fileExtension.length);
-      file = File(_platformFile.path);
-    }
+      if (file == null) {
+        PlatformFile _platformFile = await _getPlatformFile();
+        file = File(_platformFile.path);
+      }
 
-    try {
-      var formData = FormData.fromMap({
-        "file": MultipartFile.fromBytes(
-            utf8.encode((await file.readAsBytes()).toString()))
-      });
+      try {
+        var formData = FormData.fromMap({
+          "fileName": fileName,
+          "file": MultipartFile.fromBytes(
+              utf8.encode((await file.readAsBytes()).toString()))
+        });
 
-      print("http://$receipientAddr/upload");
-      await Dio().post("http://$receipientAddr/upload", data: formData);
-      MessageHandler.showSuccessMessage(
-          context, "Node $receipientAddr has received a partition");
-    } catch (e, stacktrace) {
-      MessageHandler.showFailureMessage(context, e.toString());
-      print(e);
+        await Dio().post("http://$receipientAddr/upload", data: formData);
+        MessageHandler.showSuccessMessage(
+            context, "Node $receipientAddr has received a partition");
+      } catch (e, stacktrace) {
+        MessageHandler.showFailureMessage(context, e.toString());
+        print(e);
+      }
+    } else {
+      MessageHandler.showFailureMessage(
+          context, "Node $receipientAddr is not live");
+      throw Exception("Node $receipientAddr is not live");
     }
   }
 
@@ -413,7 +386,9 @@ class _MyHomePageState extends State<MyHomePage> {
         itemCount: fileNames.length,
         itemBuilder: (context, index) {
           return InkWell(
-            onTap: () {},
+            onTap: () {
+              downloadFileFromBlockchain(fileNames[index]);
+            },
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [

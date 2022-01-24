@@ -20,6 +20,7 @@ class BlockChain {
   static void createNewBlock(List<List<int>> shardByteData, PlatformFile file,
       FilePickerResult result, List<String> knownNodes) async {
     String fileName = getFileName(file, result);
+    String fileExtension = file.extension;
     int fileSizeBytes = file.size;
     double eventCost = 2;
     Map<String, String> shardHosts = {};
@@ -36,6 +37,7 @@ class BlockChain {
 
     _Block newBlock = _Block(
         fileName,
+        fileExtension,
         fileSizeBytes,
         knownNodes.length,
         eventCost,
@@ -70,6 +72,7 @@ class BlockChain {
 
 class _Block {
   String fileName;
+  String fileExtension;
   int fileSizeBytes;
   int shardsCreated;
   //BlockEvent event;
@@ -90,6 +93,7 @@ class _Block {
 
   _Block(
       this.fileName,
+      this.fileExtension,
       this.fileSizeBytes,
       this.shardsCreated,
       this.eventCost,
@@ -104,6 +108,7 @@ class _Block {
 
   _Block.genesis() {
     fileName = "genesis";
+    fileExtension = "";
     fileSizeBytes = 0;
     shardsCreated = 0;
     eventCost = 0;
@@ -154,6 +159,7 @@ class _Block {
   Map<String, dynamic> toJson() {
     return {
       "fileName": fileName,
+      "fileExtension": fileExtension,
       "fileSizeBytes": fileSizeBytes,
       "shardsCreated": shardsCreated,
       "eventCost": eventCost,

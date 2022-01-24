@@ -44,7 +44,6 @@ class BlockchainServer {
     });
 
     app.post('/upload', (Request request) async {
-      print("sfsdf");
       final parameters = <String, String>{
         await for (final formData in request.multipartFormData)
           formData.name: await formData.part.readString(),
@@ -52,8 +51,9 @@ class BlockchainServer {
 
       SharedPreferences prefs = await SharedPreferences.getInstance();
       String savePath = prefs.getString("storage_location");
+      String fileName = parameters["fileName"];
       List<int> byteArray = List.from(json.decode(parameters["file"]));
-      File("$savePath/test.txt").writeAsBytes(byteArray);
+      File("$savePath/$fileName").writeAsBytes(byteArray);
       return Response.ok('hello-world');
     });
 
