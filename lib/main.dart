@@ -236,13 +236,14 @@ class _MyHomePageState extends State<MyHomePage> {
       "fileName": fileName,
       "fileExtension": fileExtension
     });
-    
+
+    String savePath = await FilePicker.platform.saveFile();
     shardHosts.forEach((key, value) async {
       var result = await Dio().post("http://$value/download", data: formData);
-      String savePath = await FilePicker.platform.saveFile();
       List<int> byteData = List.from(jsonDecode(result.data));
       fileBytes.addAll(byteData);
     });
+    File("$savePath/$fileName.$fileExtension").writeAsBytes(fileBytes);
   }
 
   void downloadFile(String fileName) async {
