@@ -26,7 +26,7 @@ class BlockChain {
     Map<String, String> shardHosts = {};
 
     for (int i = 0; i < knownNodes.length; i++) {
-      shardHosts["$fileName$i"] = knownNodes[i];
+      shardHosts["$i"] = knownNodes[i];
     }
 
     int timeCreated = DateTime.now().millisecondsSinceEpoch;

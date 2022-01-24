@@ -62,13 +62,15 @@ class BlockchainServer {
         await for (final formData in request.multipartFormData)
           formData.name: await formData.part.readString(),
       };
-
+      
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      String savePath = prefs.getString("storage_location");
       MessageHandler.showSuccessMessage(
           context, "${parameters["ip"]} is requesting a file");
-      FilePickerResult selectedFile = await FilePicker.platform.pickFiles();
+          File requestingFile = File("$savePath/${parameters['fileName']}.${parameters['fileExtension']}");
 
       return Response.ok(
-          (await File(selectedFile.files.single.path).readAsBytes())
+          (await requestingFile.readAsBytes())
               .toString());
     });
 

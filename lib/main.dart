@@ -134,7 +134,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
     String fileExtension = platformFile.extension;
     String fileName = platformFile.name
-        .substring(0, platformFile.name.length - fileExtension.length);
+        .substring(0, platformFile.name.length - (fileExtension.length + 1));
     String filePath = (platformFile.path).toString().substring(
         0,
         (platformFile.path).toString().length -
@@ -150,6 +150,7 @@ class _MyHomePageState extends State<MyHomePage> {
     List<List<int>> bytes = [];
     List<File> partitionFiles = [];
     for (int i = 0; i < partitions; i++) {
+      print(last_i);
       List<int> encodedFile;
       if (i == partitions - 1) {
         encodedFile = GZipCodec().encode(
@@ -173,15 +174,14 @@ class _MyHomePageState extends State<MyHomePage> {
     for (int i = 0; i < knownNodes.length; i++) {
       String receivingNodeAddr = knownNodes[i];
       sendFile(receivingNodeAddr, fileName, f: partitionFiles[i])
-          .onError((e, st) {
+          .catchError((e, st) {
         errorOccured = true;
-        MessageHandler.showFailureMessage(
-            context, "An error occured while sending partitions");
+        MessageHandler.showFailureMessage(context, e.toString());
         return;
       });
     }
 
-    if (errorOccured) {
+    if (!errorOccured) {
       BlockChain.createNewBlock(bytes, platformFile, result, knownNodes);
       setState(() {});
 
@@ -224,9 +224,25 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  void downloadFileFromBlockchain(String fileName) {
+  void downloadFileFromBlockchain(String fileName) async {
     Map<String, dynamic> blockchain = getBlockchain();
     print(blockchain["blocks"][fileName]);
+    List<int> fileBytes = [];
+    String fileExtension = blockchain["blocks"][fileName]["fileExtension"];
+    Map<String, dynamic> shardHosts =
+        jsonDecode(blockchain["blocks"][fileName]["shardHosts"]);
+    var formData = FormData.fromMap({
+      "ip": await NetworkInfo().getWifiIP(),
+      "fileName": fileName,
+      "fileExtension": fileExtension
+    });
+    
+    shardHosts.forEach((key, value) async {
+      var result = await Dio().post("http://$value/download", data: formData);
+      String savePath = await FilePicker.platform.saveFile();
+      List<int> byteData = List.from(jsonDecode(result.data));
+      fileBytes.addAll(byteData);
+    });
   }
 
   void downloadFile(String fileName) async {
@@ -276,7 +292,8 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future sendFile(String receipientAddr, String fileName, {File f}) async {
-    if (await BlockchainServer.isNodeLive(receipientAddr)) {
+    print(receipientAddr);
+    if (await BlockchainServer.isNodeLive("http://$receipientAddr")) {
       File file = f;
 
       if (file == null) {
