@@ -44,7 +44,7 @@ class BlockchainServer {
       return Response.ok('hello-world');
     });
 
-    app.get("/add_node", (Request request) async {
+    app.post("/add_node", (Request request) async {
       Map<String, String> parameters = request.params;
 
       String addr = parameters["addr"];
