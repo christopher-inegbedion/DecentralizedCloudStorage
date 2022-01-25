@@ -77,10 +77,11 @@ class MyApp extends StatelessWidget {
 }
 
 class MyHomePage extends StatefulWidget {
+  MyHomePageState state = MyHomePageState();
   MyHomePage({Key key}) : super(key: key);
 
   @override
-  State<MyHomePage> createState() => MyHomePageState();
+  State<MyHomePage> createState() => state;
 }
 
 class MyHomePageState extends State<MyHomePage> {
@@ -186,6 +187,12 @@ class MyHomePageState extends State<MyHomePage> {
     if (!errorOccured) {
       setState(() {
         BlockChain.createNewBlock(bytes, platformFile, result, knownNodes);
+        Map<String, dynamic> blockchain = getBlockchain();
+        blockchain["blocks"].forEach((key, value) {
+          trie.insert(key);
+
+          fileNames[key] = blockchain["blocks"][key];
+        });
 
         MessageHandler.showToast(context, "Partition success");
       });
@@ -305,7 +312,8 @@ class MyHomePageState extends State<MyHomePage> {
         await Dio().post(
           "http://$receipientAddr/upload",
           data: formData,
-          onReceiveProgress: (count, total) {
+          onSendProgress: (count, total) {
+            print((count / total) * 100);
             pd.update(value: ((count / total) * 100).toInt());
           },
         );
@@ -370,7 +378,7 @@ class MyHomePageState extends State<MyHomePage> {
   }
 
   String _convertTimestampToDate(int value) {
-    var date = DateTime.fromMillisecondsSinceEpoch(value * 1000);
+    var date = DateTime.fromMillisecondsSinceEpoch(value);
     var d12 = DateFormat('MM-dd-yyyy, hh:mm a').format(date);
     return d12;
   }
