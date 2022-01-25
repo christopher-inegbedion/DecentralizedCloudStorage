@@ -107,7 +107,7 @@ class BlockchainServer {
       List<int> byteArray = List.from(json.decode(parameters["file"]));
 
       File("$savePath/$fileName.$fileExtension")
-          .writeAsBytes(byteArray, mode: FileMode.append);
+          .writeAsBytes(GZipCodec().decode(byteArray), mode: FileMode.append);
       return Response.ok("done");
     });
 
