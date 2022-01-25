@@ -12,6 +12,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 // import 'package:shelf_multipart/form_data.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sn_progress_dialog/progress_dialog.dart';
 import 'package:testwindowsapp/blockchain.dart';
 import 'package:testwindowsapp/blockchain_server.dart';
 import 'package:testwindowsapp/message_handler.dart';
@@ -242,13 +243,7 @@ class MyHomePageState extends State<MyHomePage> {
     });
 
     shardHosts.forEach((key, value) {
-      Dio().post("http://$value/download", data: formData).then((result) {
-        List<int> byteData = List.from(jsonDecode(result.data));
-        fileBytes.addAll(byteData);
-      }).whenComplete(() {
-        File("$savePath/${fileName}1.$fileExtension")
-            .writeAsBytes(fileBytes, mode: FileMode.append);
-      });
+      Dio().post("http://$value/download", data: formData);
     });
 
     MessageHandler.showSuccessMessage(
@@ -304,12 +299,14 @@ class MyHomePageState extends State<MyHomePage> {
               utf8.encode((await file.readAsBytes()).toString()))
         });
 
+        ProgressDialog pd = ProgressDialog(context: context);
+        pd.show(max: 100, msg: 'File uploading...');
+
         await Dio().post(
           "http://$receipientAddr/upload",
           data: formData,
-          onSendProgress: (count, total) {
-            MessageHandler.showToast(
-                context, "Node $receipientAddr upload progress: $count");
+          onReceiveProgress: (count, total) {
+            pd.update(value: ((count / total) * 100).toInt());
           },
         );
         MessageHandler.showSuccessMessage(
@@ -323,34 +320,6 @@ class MyHomePageState extends State<MyHomePage> {
           context, "Node $receipientAddr is not live");
       throw Exception("Node $receipientAddr is not live");
     }
-  }
-
-  Future<String> showAddPortDialog() {
-    TextEditingController _textEditingController = TextEditingController();
-
-    return showDialog(
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            title: const Text('Port number'),
-            content: TextField(
-              onChanged: (value) {},
-              keyboardType: TextInputType.number,
-              controller: _textEditingController,
-              decoration: const InputDecoration(hintText: "Enter port number"),
-            ),
-            actions: <Widget>[
-              FlatButton(
-                color: Colors.green,
-                textColor: Colors.white,
-                child: const Text('OK'),
-                onPressed: () {
-                  Navigator.pop(context, _textEditingController.text);
-                },
-              ),
-            ],
-          );
-        });
   }
 
   Future<List> showAddNodeDialog() {
@@ -413,8 +382,7 @@ class MyHomePageState extends State<MyHomePage> {
         itemBuilder: (context, index) {
           return InkWell(
             onTap: () {
-              downloadFileFromBlockchain(
-                  fileNames[fileNames.keys.elementAt(index)]);
+              downloadFileFromBlockchain(fileNames.keys.elementAt(index));
             },
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -467,8 +435,8 @@ class MyHomePageState extends State<MyHomePage> {
         String ipAddress = result[0];
         String portNumber = result[1];
         address = "$ipAddress:$portNumber";
-        await Dio()
-            .get("$address/add_node", queryParameters: {"addr": address});
+        await Dio().get("http://$address/add_node",
+            queryParameters: {"addr": address});
       } catch (e, stacktrace) {
         MessageHandler.showFailureMessage(context, e.toString());
       }

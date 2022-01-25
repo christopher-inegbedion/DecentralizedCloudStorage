@@ -75,7 +75,7 @@ class BlockchainServer {
       String savePath = prefs.getString("storage_location");
       MessageHandler.showSuccessMessage(
           context, "${parameters["ip"]} is requesting a file");
-      File requestingFile = File("$savePath/${parameters['fileName']}}");
+      File requestingFile = File("$savePath/${parameters['fileName']}");
       var formData = dio.FormData.fromMap({
         "fileName": parameters["fileName"],
         "fileExtension": parameters["fileExtension"],
