@@ -444,8 +444,10 @@ class MyHomePageState extends State<MyHomePage> {
         String ipAddress = result[0];
         String portNumber = result[1];
         address = "$ipAddress:$portNumber";
-        await Dio().get("http://$address/add_node",
-            queryParameters: {"addr": address});
+        await Dio().post("http://$address/add_node",
+            data: FormData.fromMap({
+              "addr": "$ipAddress:$portNumber",
+            }));
       } catch (e, stacktrace) {
         MessageHandler.showFailureMessage(context, e.toString());
       }
