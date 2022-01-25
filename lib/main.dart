@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
+import 'package:intl/intl.dart';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -78,15 +79,15 @@ class MyHomePage extends StatefulWidget {
   MyHomePage({Key key}) : super(key: key);
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<MyHomePage> createState() => MyHomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
+class MyHomePageState extends State<MyHomePage> {
   GlobalKey<FormState> searchKey = GlobalKey();
   bool searchVisible = false;
   bool autoCompleteVisible = false;
   bool searchMode = false;
-  List<String> fileNames = [];
+  Map<String, dynamic> fileNames = {};
   List<String> searchResults = [];
   List<String> knownNodes = [];
   final trie = Trie();
@@ -182,11 +183,12 @@ class _MyHomePageState extends State<MyHomePage> {
     }
 
     if (!errorOccured) {
-      BlockChain.createNewBlock(bytes, platformFile, result, knownNodes);
+      setState(() {
+        BlockChain.createNewBlock(bytes, platformFile, result, knownNodes);
 
-      MessageHandler.showToast(context, "Partition success");
+        MessageHandler.showToast(context, "Partition success");
+      });
     }
-    setState(() {});
   }
 
   void combine() async {
@@ -225,45 +227,32 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void downloadFileFromBlockchain(String fileName) async {
-    Map<String, dynamic> blockchain = getBlockchain();
-    print(blockchain["blocks"][fileName]);
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String savePath = prefs.getString("storage_location");
+
+    Map<String, dynamic> blocks = getBlockchain()["blocks"];
+
     List<int> fileBytes = [];
-    String fileExtension = blockchain["blocks"][fileName]["fileExtension"];
-    Map<String, dynamic> shardHosts =
-        blockchain["blocks"][fileName]["shardHosts"];
+    String fileExtension = blocks[fileName]["fileExtension"];
+    Map<String, dynamic> shardHosts = blocks[fileName]["shardHosts"];
     var formData = FormData.fromMap({
       "ip": await NetworkInfo().getWifiIP(),
       "fileName": fileName,
-      "fileExtension": fileExtension
+      "fileExtension": fileExtension,
     });
 
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    String savePath = prefs.getString("storage_location");
     shardHosts.forEach((key, value) {
       Dio().post("http://$value/download", data: formData).then((result) {
         List<int> byteData = List.from(jsonDecode(result.data));
         fileBytes.addAll(byteData);
       }).whenComplete(() {
-        File("C:/Users/Owner/Desktop/echo/${fileName}1.$fileExtension")
+        File("$savePath/${fileName}1.$fileExtension")
             .writeAsBytes(fileBytes, mode: FileMode.append);
       });
     });
 
     MessageHandler.showSuccessMessage(
         context, "File now available at: $savePath");
-  }
-
-  void downloadFile(String fileName) async {
-    Map<String, dynamic> blockData = getBlockchain()["blocks"][fileName];
-    var formData = FormData.fromMap({"ip": await NetworkInfo().getWifiIP()});
-
-    print("http://${blockData['shardHosts']["0"]}/download");
-    var result = await Dio().post(
-        "http://${blockData['shardHosts']["0"]}/download",
-        data: formData);
-    String savePath = await FilePicker.platform.saveFile();
-    List<int> byteData = List.from(jsonDecode(result.data));
-    File(savePath).writeAsBytes(byteData);
   }
 
   void requestStorageLocationDialog() async {
@@ -300,7 +289,6 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future sendFile(String receipientAddr, String fileName, {File f}) async {
-    print(receipientAddr);
     if (await BlockchainServer.isNodeLive("http://$receipientAddr")) {
       File file = f;
 
@@ -316,7 +304,14 @@ class _MyHomePageState extends State<MyHomePage> {
               utf8.encode((await file.readAsBytes()).toString()))
         });
 
-        await Dio().post("http://$receipientAddr/upload", data: formData);
+        await Dio().post(
+          "http://$receipientAddr/upload",
+          data: formData,
+          onSendProgress: (count, total) {
+            MessageHandler.showToast(
+                context, "Node $receipientAddr upload progress: $count");
+          },
+        );
         MessageHandler.showSuccessMessage(
             context, "Node $receipientAddr has received a partition");
       } catch (e, stacktrace) {
@@ -405,6 +400,12 @@ class _MyHomePageState extends State<MyHomePage> {
     return BlockChain.toJson();
   }
 
+  String _convertTimestampToDate(int value) {
+    var date = DateTime.fromMillisecondsSinceEpoch(value * 1000);
+    var d12 = DateFormat('MM-dd-yyyy, hh:mm a').format(date);
+    return d12;
+  }
+
   Widget displayBlockchainFiles() {
     return ListView.builder(
         shrinkWrap: true,
@@ -412,51 +413,69 @@ class _MyHomePageState extends State<MyHomePage> {
         itemBuilder: (context, index) {
           return InkWell(
             onTap: () {
-              downloadFileFromBlockchain(fileNames[index]);
+              downloadFileFromBlockchain(
+                  fileNames[fileNames.keys.elementAt(index)]);
             },
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Container(
                     alignment: Alignment.center,
+                    padding: const EdgeInsets.only(top: 10, bottom: 10),
                     margin: const EdgeInsets.only(left: 20),
-                    child: Text(
-                      fileNames[index],
-                      style: const TextStyle(fontSize: 13),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          fileNames.keys.elementAt(index),
+                          style: const TextStyle(fontSize: 15),
+                        ),
+                        Text(
+                          "Uploaded: ${_convertTimestampToDate(fileNames[fileNames.keys.elementAt(index)]["timeCreated"])}",
+                          style:
+                              const TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
+                      ],
                     )),
-                Expanded(
-                  child: Container(
-                    margin: const EdgeInsets.only(right: 20),
-                    alignment: Alignment.centerRight,
-                    // color: Colors.red,
-                    child: IconButton(
-                      splashRadius: 10,
-                      icon: const Icon(
-                        Icons.download,
-                        size: 12,
-                      ),
-                      onPressed: () {},
-                    ),
-                  ),
-                )
+                // Expanded(
+                //   child: Container(
+                //     margin: const EdgeInsets.only(right: 20),
+                //     alignment: Alignment.centerRight,
+                //     // color: Colors.red,
+                //     child: IconButton(
+                //       splashRadius: 10,
+                //       icon: const Icon(
+                //         Icons.download,
+                //         size: 12,
+                //       ),
+                //       onPressed: () {},
+                //     ),
+                //   ),
+                // )
               ],
             ),
           );
         });
   }
 
-  void addNode() async {
-    try {
-      List result = await showAddNodeDialog();
-      String ipAddress = result[0];
-      String portNumber = result[1];
+  void addNode({String addr}) async {
+    String address = addr;
 
-      knownNodes.add("$ipAddress:$portNumber");
-      MessageHandler.showSuccessMessage(
-          context, "$ipAddress:$portNumber is now a known node");
-    } catch (e, stacktrace) {
-      MessageHandler.showFailureMessage(context, e.toString());
+    if (address == null) {
+      try {
+        List result = await showAddNodeDialog();
+        String ipAddress = result[0];
+        String portNumber = result[1];
+        address = "$ipAddress:$portNumber";
+        await Dio()
+            .get("$address/add_node", queryParameters: {"addr": address});
+      } catch (e, stacktrace) {
+        MessageHandler.showFailureMessage(context, e.toString());
+      }
     }
+
+    knownNodes.add(address);
+    MessageHandler.showSuccessMessage(context, "$address is now a known node");
   }
 
   @override
@@ -474,7 +493,7 @@ class _MyHomePageState extends State<MyHomePage> {
     blockchain["blocks"].forEach((key, value) {
       trie.insert(key);
 
-      fileNames.add(key);
+      fileNames[key] = blockchain["blocks"][key];
     });
 
     return SafeArea(
@@ -490,13 +509,12 @@ class _MyHomePageState extends State<MyHomePage> {
                 children: [
                   createTopNavBarButton(
                       "SEARCH", Icons.search, toggleSeachVisibility),
-                  createTopNavBarButton(
-                      "PARTITION", Icons.dashboard_customize_outlined, () {
+                  createTopNavBarButton("UPLOAD", Icons.upload_file, () {
                     partitionFile();
                   }),
-                  createTopNavBarButton("COMBINE", Icons.view_in_ar, () {
-                    combine();
-                  }),
+                  // createTopNavBarButton("COMBINE", Icons.view_in_ar, () {
+                  //   combine();
+                  // }),
                   // createTopNavBarButton("SEND FILE", Icons.send, () {
                   //   sendFile();
                   // }),
@@ -612,9 +630,7 @@ class _MyHomePageState extends State<MyHomePage> {
                             itemCount: searchResults.length,
                             itemBuilder: (context, index) {
                               return InkWell(
-                                onTap: () {
-                                  downloadFile(searchResults[index]);
-                                },
+                                onTap: () {},
                                 child: Row(
                                   children: [
                                     Container(

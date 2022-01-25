@@ -51,6 +51,7 @@ dependencies:
   dio: ^4.0.4
   file_selector_macos: ^0.0.4+1
   retrieval: ^1.0.1
+  intl: ^0.17.0
 
 dev_dependencies:
   flutter_test:

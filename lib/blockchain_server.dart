@@ -43,6 +43,14 @@ class BlockchainServer {
       return Response.ok('hello-world');
     });
 
+    app.get("/add_node", (Request request) async {
+      Map<String, String> parameters = request.params;
+
+      String addr = parameters["addr"];
+      MyHomePageState().addNode(addr: addr);
+      return Response.ok("done");
+    });
+
     app.post('/upload', (Request request) async {
       final parameters = <String, String>{
         await for (final formData in request.multipartFormData)
@@ -67,11 +75,35 @@ class BlockchainServer {
       String savePath = prefs.getString("storage_location");
       MessageHandler.showSuccessMessage(
           context, "${parameters["ip"]} is requesting a file");
-      File requestingFile = File(
-          "$savePath/${parameters['fileName']}}");
+      File requestingFile = File("$savePath/${parameters['fileName']}}");
+      var formData = dio.FormData.fromMap({
+        "fileName": parameters["fileName"],
+        "fileExtension": parameters["fileExtension"],
+        "file": dio.MultipartFile.fromBytes(
+            utf8.encode((await requestingFile.readAsBytes()).toString()))
+      });
+
+      dio.Dio().post("http://${parameters["ip"]}/receive_file", data: formData);
 
       return Response.ok(
           GZipCodec().decode((await requestingFile.readAsBytes())).toString());
+    });
+
+    app.post("/receive_file", (Request request) async {
+      final parameters = <String, String>{
+        await for (final formData in request.multipartFormData)
+          formData.name: await formData.part.readString(),
+      };
+
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      String savePath = prefs.getString("storage_location");
+      String fileName = parameters["fileName"];
+      String fileExtension = parameters["fileExtension"];
+      List<int> byteArray = List.from(json.decode(parameters["file"]));
+
+      File("$savePath/$fileName.$fileExtension")
+          .writeAsBytes(byteArray, mode: FileMode.append);
+      return Response.ok("done");
     });
 
     var server = await io.serve(app, ip, port);
