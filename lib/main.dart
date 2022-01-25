@@ -120,8 +120,6 @@ class MyHomePageState extends State<MyHomePage> {
   }
 
   void partitionFile() async {
-    // print(await BlockchainServer.isNodeLive("http://localhost:44876"));
-
     if (knownNodes.isEmpty) {
       MessageHandler.showFailureMessage(context, "You have no known nodes");
       return;
@@ -152,8 +150,13 @@ class MyHomePageState extends State<MyHomePage> {
     int last_i = 0;
     List<List<int>> bytes = [];
     List<File> partitionFiles = [];
+
+    ProgressDialog pd = ProgressDialog(context: context);
     for (int i = 0; i < partitions; i++) {
-      print(last_i);
+      pd.show(
+          max: 100,
+          msg: 'Creating shard $i of $partitions...',
+          barrierColor: Colors.grey);
       List<int> encodedFile;
       if (i == partitions - 1) {
         encodedFile = GZipCodec().encode(
@@ -172,6 +175,7 @@ class MyHomePageState extends State<MyHomePage> {
       bytes.add(encodedFile);
       partitionFiles.add(newFile);
     }
+    pd.close();
 
     bool errorOccured = false;
     for (int i = 0; i < knownNodes.length; i++) {
@@ -245,6 +249,7 @@ class MyHomePageState extends State<MyHomePage> {
     Map<String, dynamic> shardHosts = blocks[fileName]["shardHosts"];
     var formData = FormData.fromMap({
       "ip": await NetworkInfo().getWifiIP(),
+      "port": BlockchainServer.port,
       "fileName": fileName,
       "fileExtension": fileExtension,
     });
@@ -308,7 +313,9 @@ class MyHomePageState extends State<MyHomePage> {
 
         ProgressDialog pd = ProgressDialog(context: context);
         pd.show(
-            max: 100, msg: 'File uploading...', backgroundColor: Colors.grey);
+            max: 100,
+            msg: "Uploading shard to $receipientAddr...",
+            barrierColor: Colors.grey);
 
         await Dio().post(
           "http://$receipientAddr/upload",

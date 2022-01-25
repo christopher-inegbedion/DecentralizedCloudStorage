@@ -88,7 +88,7 @@ class BlockchainServer {
             utf8.encode((await requestingFile.readAsBytes()).toString()))
       });
 
-      dio.Dio().post("http://${parameters["ip"]}/receive_file", data: formData);
+      dio.Dio().post("http://${parameters["ip"]}:${parameters["port"]}/receive_file", data: formData);
 
       return Response.ok(
           GZipCodec().decode((await requestingFile.readAsBytes())).toString());
