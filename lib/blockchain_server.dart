@@ -17,12 +17,13 @@ import 'main.dart';
 import 'package:file_picker/file_picker.dart';
 
 class BlockchainServer {
+  MyHomePageState state;
   BuildContext context;
   NetworkInfo _networkInfo;
   static final port = Random().nextInt(60000);
   static String ip;
 
-  BlockchainServer(this.context) {
+  BlockchainServer(this.context, this.state) {
     _networkInfo = NetworkInfo();
   }
 
@@ -47,7 +48,7 @@ class BlockchainServer {
       Map<String, String> parameters = request.params;
 
       String addr = parameters["addr"];
-      MyHomePageState().addNode(addr: addr);
+      state.addNode(addr: addr);
       return Response.ok("done");
     });
 

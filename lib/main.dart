@@ -77,11 +77,10 @@ class MyApp extends StatelessWidget {
 }
 
 class MyHomePage extends StatefulWidget {
-  MyHomePageState state = MyHomePageState();
   MyHomePage({Key key}) : super(key: key);
 
   @override
-  State<MyHomePage> createState() => state;
+  State<MyHomePage> createState() => MyHomePageState();
 }
 
 class MyHomePageState extends State<MyHomePage> {
@@ -92,6 +91,7 @@ class MyHomePageState extends State<MyHomePage> {
   Map<String, dynamic> fileNames = {};
   List<String> searchResults = [];
   List<String> knownNodes = [];
+  BlockchainServer server;
   final trie = Trie();
 
   Widget createTopNavBarButton(String text, IconData btnIcon, Function action) {
@@ -307,7 +307,8 @@ class MyHomePageState extends State<MyHomePage> {
         });
 
         ProgressDialog pd = ProgressDialog(context: context);
-        pd.show(max: 100, msg: 'File uploading...');
+        pd.show(
+            max: 100, msg: 'File uploading...', backgroundColor: Colors.grey);
 
         await Dio().post(
           "http://$receipientAddr/upload",
@@ -457,7 +458,9 @@ class MyHomePageState extends State<MyHomePage> {
   @override
   void initState() {
     super.initState();
-    BlockchainServer(context).startServer();
+    server = BlockchainServer(context, this);
+
+    server.startServer();
     requestStorageLocationDialog();
   }
 
