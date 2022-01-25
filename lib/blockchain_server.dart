@@ -45,7 +45,10 @@ class BlockchainServer {
     });
 
     app.post("/add_node", (Request request) async {
-      Map<String, String> parameters = request.params;
+      final parameters = <String, String>{
+        await for (final formData in request.multipartFormData)
+          formData.name: await formData.part.readString(),
+      };
 
       String addr = parameters["addr"];
       print(addr);

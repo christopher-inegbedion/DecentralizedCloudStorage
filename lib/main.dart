@@ -443,10 +443,13 @@ class MyHomePageState extends State<MyHomePage> {
         List result = await showAddNodeDialog();
         String ipAddress = result[0];
         String portNumber = result[1];
+
+        String myIP = await NetworkInfo().getWifiIP();
+        int myPort = BlockchainServer.port;
         address = "$ipAddress:$portNumber";
         await Dio().post("http://$address/add_node",
             data: FormData.fromMap({
-              "addr": "$ipAddress:$portNumber",
+              "addr": "$myIP:$myPort",
             }));
       } catch (e, stacktrace) {
         MessageHandler.showFailureMessage(context, e.toString());
