@@ -48,6 +48,7 @@ class BlockchainServer {
       Map<String, String> parameters = request.params;
 
       String addr = parameters["addr"];
+      print(addr);
       state.addNode(addr: addr);
       return Response.ok("done");
     });
