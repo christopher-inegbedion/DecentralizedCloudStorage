@@ -82,13 +82,14 @@ class _Block {
   String fileHost;
   String salt;
   String prevBlockHash;
-  List<List<int>> shardByteData;
   String merkleTreeRootHash;
+
+  List<List<int>> _shardByteData;
 
   static const int saltLength = 10;
 
   void init() {
-    merkleTreeRootHash = createBlockHash(shardByteData, salt, prevBlockHash);
+    merkleTreeRootHash = createBlockHash(_shardByteData, salt, prevBlockHash);
   }
 
   _Block(
@@ -102,7 +103,7 @@ class _Block {
       this.fileHost,
       this.salt,
       this.prevBlockHash,
-      this.shardByteData) {
+      this._shardByteData) {
     init();
   }
 
@@ -117,7 +118,7 @@ class _Block {
     fileHost = "";
     salt = getRandString();
     prevBlockHash = "";
-    shardByteData = [];
+    _shardByteData = [];
 
     init();
   }

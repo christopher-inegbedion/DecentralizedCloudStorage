@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -15,7 +16,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sn_progress_dialog/progress_dialog.dart';
 import 'package:testwindowsapp/blockchain.dart';
 import 'package:testwindowsapp/blockchain_server.dart';
+import 'package:testwindowsapp/domain_regisrty.dart';
 import 'package:testwindowsapp/message_handler.dart';
+import 'package:testwindowsapp/token.dart';
+import 'package:testwindowsapp/token_view.dart';
 import 'package:window_size/window_size.dart';
 import 'package:retrieval/trie.dart';
 
@@ -70,7 +74,7 @@ class MyApp extends StatelessWidget {
       title: 'Shr: Cloud storage platform',
       theme: ThemeData(
           primarySwatch: Colors.blue,
-          textTheme: GoogleFonts.jetBrainsMonoTextTheme()),
+          textTheme: GoogleFonts.robotoMonoTextTheme()),
       home: MyHomePage(),
     );
   }
@@ -93,6 +97,7 @@ class MyHomePageState extends State<MyHomePage> {
   List<String> knownNodes = [];
   BlockchainServer server;
   final trie = Trie();
+  Token _token = Token();
 
   Widget createTopNavBarButton(String text, IconData btnIcon, Function action) {
     return TextButton(
@@ -387,7 +392,7 @@ class MyHomePageState extends State<MyHomePage> {
 
   String _convertTimestampToDate(int value) {
     var date = DateTime.fromMillisecondsSinceEpoch(value);
-    var d12 = DateFormat('MM-dd-yyyy, hh:mm a').format(date);
+    var d12 = DateFormat('EEE, MM-dd-yyyy, hh:mm:ss a').format(date);
     return d12;
   }
 
@@ -410,14 +415,32 @@ class MyHomePageState extends State<MyHomePage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          fileNames.keys.elementAt(index),
-                          style: const TextStyle(fontSize: 15),
+                        RichText(
+                          text: TextSpan(
+                            style: GoogleFonts.robotoMono(
+                              color: Colors.black,
+                            ),
+                            children: [
+                              TextSpan(
+                                text: fileNames.keys.elementAt(index),
+                                style: const TextStyle(fontSize: 15),
+                              ),
+                              TextSpan(
+                                text:
+                                    " by ${fileNames[fileNames.keys.elementAt(index)]['fileHost']}",
+                                style: const TextStyle(
+                                    fontSize: 11, color: Colors.grey),
+                              ),
+                            ],
+                          ),
                         ),
-                        Text(
-                          "Uploaded: ${_convertTimestampToDate(fileNames[fileNames.keys.elementAt(index)]["timeCreated"])}",
-                          style:
-                              const TextStyle(fontSize: 11, color: Colors.grey),
+                        Container(
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            "Uploaded: ${_convertTimestampToDate(fileNames[fileNames.keys.elementAt(index)]["timeCreated"])}",
+                            style: const TextStyle(
+                                fontSize: 11, color: Colors.grey),
+                          ),
                         ),
                       ],
                     )),
@@ -478,186 +501,198 @@ class MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    NetworkInfo().getWifiIP().then((ip) {
+      print(DomainRegistry().generateID(ip, BlockchainServer.port));
+    });
     Map<String, dynamic> blockchain = getBlockchain();
     fileNames.clear();
 
-    blockchain["blocks"].forEach((key, value) {
-      trie.insert(key);
+    blockchain["blocks"].forEach((fileName, value) {
+      trie.insert(fileName);
 
-      fileNames[key] = blockchain["blocks"][key];
+      fileNames[fileName] = blockchain["blocks"][fileName];
     });
 
     return SafeArea(
       child: Scaffold(
         backgroundColor: Colors.white,
-        body: Column(
+        body: Stack(
           children: [
-            SizedBox(
-              height: 50,
-              width: double.maxFinite,
-              child: Center(
-                  child: Row(
-                children: [
-                  createTopNavBarButton(
-                      "SEARCH", Icons.search, toggleSeachVisibility),
-                  createTopNavBarButton("UPLOAD", Icons.upload_file, () {
-                    partitionFile();
-                  }),
-                  // createTopNavBarButton("COMBINE", Icons.view_in_ar, () {
-                  //   combine();
-                  // }),
-                  // createTopNavBarButton("SEND FILE", Icons.send, () {
-                  //   sendFile();
-                  // }),
-                  createTopNavBarButton("ADD NODE", Icons.person_add, () {
-                    addNode();
-                  }),
-                  // SelectableText("ip: ${BlockchainServer.ip}"),
-                  SelectableText("port: ${BlockchainServer.port.toString()}"),
-                  Expanded(
-                    child: Container(),
-                  ),
-                  // Align(
-                  //   alignment: Alignment.centerRight,
-                  //   child: createTopNavBarButton(
-                  //       "DOWNLOAD PROGRESS", Icons.download, () {}),
-                  // )
-                ],
-              )),
-            ),
-            Container(height: 1, color: Colors.grey[100]),
-            Stack(
+            Column(
               children: [
-                Column(
-                  children: [
-                    SizedBox(
-                      height: 40,
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Container(
-                            margin: const EdgeInsets.only(left: 20),
-                            child: const Text(
-                              "Recently shared",
-                              style: TextStyle(
-                                  fontSize: 12, fontWeight: FontWeight.bold),
-                            )),
+                SizedBox(
+                  height: 50,
+                  width: double.maxFinite,
+                  child: Center(
+                      child: Row(
+                    children: [
+                      createTopNavBarButton(
+                          "SEARCH", Icons.search, toggleSeachVisibility),
+                      createTopNavBarButton("UPLOAD", Icons.upload_file, () {
+                        partitionFile();
+                      }),
+                      createTopNavBarButton("ADD NODE", Icons.person_add, () {
+                        addNode();
+                      }),
+                      SelectableText(
+                          "port: ${BlockchainServer.port.toString()}"),
+                      Expanded(
+                        child: Container(),
                       ),
-                    ),
-                    Container(height: 1, color: Colors.grey[100]),
-                  ],
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child:
+                            createTopNavBarButton("REFRESH", Icons.refresh, () {
+                          setState(() {});
+                        }),
+                      )
+                    ],
+                  )),
                 ),
-                Visibility(
-                  visible: searchVisible,
-                  child: Container(
-                    width: double.maxFinite,
-                    color: Colors.white,
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Container(
-                          margin: const EdgeInsets.only(left: 20),
-                          child: Form(
-                            key: searchKey,
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.search,
-                                  size: 11,
-                                ),
-                                Expanded(
-                                  child: Container(
-                                    alignment: Alignment.centerLeft,
-                                    margin: const EdgeInsets.only(left: 10),
-                                    child: TextFormField(
-                                      onChanged: (value) {
-                                        if (value.isEmpty) {
-                                          setState(() {
-                                            autoCompleteVisible = false;
-                                          });
-                                        } else {
-                                          searchKeyword(value);
-                                          setState(() {
-                                            if (searchResults.isNotEmpty) {
-                                              autoCompleteVisible = true;
-                                            }
-                                          });
-                                        }
-                                      },
-                                      scrollPadding: EdgeInsets.zero,
-                                      style: const TextStyle(fontSize: 12),
-                                      decoration: const InputDecoration(
-                                          border: InputBorder.none,
-                                          hintText: "Search"),
-                                    ),
-                                  ),
-                                ),
-                                Container(
-                                  margin: const EdgeInsets.only(
-                                      left: 20, right: 20),
-                                  child: IconButton(
-                                    splashRadius: 3,
-                                    icon: const Icon(
-                                      Icons.close,
-                                      size: 11,
-                                    ),
-                                    onPressed: () {
-                                      toggleSeachVisibility();
-                                    },
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )),
-                    ),
-                  ),
-                ),
-                Visibility(
-                  visible: searchVisible && autoCompleteVisible,
-                  child: Container(
-                    margin: const EdgeInsets.only(top: 43),
-                    child: Column(
+                Container(height: 1, color: Colors.grey[100]),
+                Stack(
+                  children: [
+                    Column(
                       children: [
-                        ListView.builder(
-                            shrinkWrap: true,
-                            itemCount: searchResults.length,
-                            itemBuilder: (context, index) {
-                              return InkWell(
-                                onTap: () {},
-                                child: Row(
-                                  children: [
-                                    Container(
-                                        padding: const EdgeInsets.only(
-                                            top: 10, bottom: 10, left: 20),
-                                        child: Text(searchResults[index])),
-                                    Expanded(child: Container()),
-                                    Container(
-                                        margin:
-                                            const EdgeInsets.only(right: 10),
-                                        child: const Text("click to download",
-                                            style: TextStyle(
-                                                fontSize: 10,
-                                                color: Colors.green)))
-                                  ],
-                                ),
-                              );
-                            }),
-                        Container(
+                        SizedBox(
+                          height: 40,
+                          child: Align(
                             alignment: Alignment.centerLeft,
-                            margin: EdgeInsets.only(left: 20, bottom: 5),
-                            child: Text("Search results",
-                                style: TextStyle(
-                                    color: Colors.grey, fontSize: 10))),
+                            child: Container(
+                                margin: const EdgeInsets.only(left: 20),
+                                child: const Text(
+                                  "Recently shared",
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold),
+                                )),
+                          ),
+                        ),
                         Container(height: 1, color: Colors.grey[100]),
                       ],
                     ),
-                    // color: const Color(0xFFFFFDE7)
-                  ),
+                    Visibility(
+                      visible: searchVisible,
+                      child: Container(
+                        width: double.maxFinite,
+                        color: Colors.white,
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Container(
+                              margin: const EdgeInsets.only(left: 20),
+                              child: Form(
+                                key: searchKey,
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.search,
+                                      size: 11,
+                                    ),
+                                    Expanded(
+                                      child: Container(
+                                        alignment: Alignment.centerLeft,
+                                        margin: const EdgeInsets.only(left: 10),
+                                        child: TextFormField(
+                                          onChanged: (value) {
+                                            if (value.isEmpty) {
+                                              setState(() {
+                                                autoCompleteVisible = false;
+                                              });
+                                            } else {
+                                              searchKeyword(value);
+                                              setState(() {
+                                                if (searchResults.isNotEmpty) {
+                                                  autoCompleteVisible = true;
+                                                }
+                                              });
+                                            }
+                                          },
+                                          scrollPadding: EdgeInsets.zero,
+                                          style: const TextStyle(fontSize: 12),
+                                          decoration: const InputDecoration(
+                                              border: InputBorder.none,
+                                              hintText: "Search"),
+                                        ),
+                                      ),
+                                    ),
+                                    Container(
+                                      margin: const EdgeInsets.only(
+                                          left: 20, right: 20),
+                                      child: IconButton(
+                                        splashRadius: 3,
+                                        icon: const Icon(
+                                          Icons.close,
+                                          size: 11,
+                                        ),
+                                        onPressed: () {
+                                          toggleSeachVisibility();
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )),
+                        ),
+                      ),
+                    ),
+                    Visibility(
+                      visible: searchVisible && autoCompleteVisible,
+                      child: Container(
+                        margin: const EdgeInsets.only(top: 43),
+                        child: Column(
+                          children: [
+                            ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: searchResults.length,
+                                itemBuilder: (context, index) {
+                                  return InkWell(
+                                    onTap: () {
+                                      downloadFileFromBlockchain(
+                                          searchResults[index]);
+                                    },
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                            padding: const EdgeInsets.only(
+                                                top: 10, bottom: 10, left: 20),
+                                            child: Text(searchResults[index])),
+                                        Expanded(child: Container()),
+                                        Container(
+                                            margin: const EdgeInsets.only(
+                                                right: 10),
+                                            child: const Text(
+                                                "click to download",
+                                                style: TextStyle(
+                                                    fontSize: 10,
+                                                    color: Colors.green)))
+                                      ],
+                                    ),
+                                  );
+                                }),
+                            Container(
+                                alignment: Alignment.centerLeft,
+                                margin: EdgeInsets.only(left: 20, bottom: 5),
+                                child: Text("Search results",
+                                    style: TextStyle(
+                                        color: Colors.grey, fontSize: 10))),
+                            Container(height: 1, color: Colors.grey[100]),
+                          ],
+                        ),
+                        // color: const Color(0xFFFFFDE7)
+                      ),
+                    ),
+                  ],
                 ),
+                fileNames.isNotEmpty
+                    ? displayBlockchainFiles()
+                    : Expanded(
+                        child:
+                            Container(child: Center(child: Text("No files"))))
               ],
             ),
-            fileNames.isNotEmpty
-                ? displayBlockchainFiles()
-                : Expanded(
-                    child: Container(child: Center(child: Text("No files"))))
+            Align(
+                alignment: Alignment.bottomRight,
+                child: AvailableTokensView(_token)),
           ],
         ),
       ),
