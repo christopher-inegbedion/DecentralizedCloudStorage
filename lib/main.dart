@@ -444,23 +444,126 @@ class MyHomePageState extends State<MyHomePage> {
                         ),
                       ],
                     )),
-                // Expanded(
-                //   child: Container(
-                //     margin: const EdgeInsets.only(right: 20),
-                //     alignment: Alignment.centerRight,
-                //     // color: Colors.red,
-                //     child: IconButton(
-                //       splashRadius: 10,
-                //       icon: const Icon(
-                //         Icons.download,
-                //         size: 12,
-                //       ),
-                //       onPressed: () {},
-                //     ),
-                //   ),
-                // )
+                Expanded(
+                  child: Container(
+                    margin: const EdgeInsets.only(right: 20),
+                    alignment: Alignment.centerRight,
+                    // color: Colors.red,
+                    child: IconButton(
+                      splashRadius: 10,
+                      icon: const Icon(
+                        Icons.info,
+                        size: 12,
+                      ),
+                      onPressed: () {
+                        String fileName = fileNames.keys.elementAt(index);
+                        String fileUploader =
+                            fileNames[fileNames.keys.elementAt(index)]
+                                ['fileHost'];
+                        showFileInfoDialog(fileName, fileUploader);
+                      },
+                    ),
+                  ),
+                )
               ],
             ),
+          );
+        });
+  }
+
+  void showFileInfoDialog(String fileName, String uploader) async {
+    Map<String, dynamic> fileData = fileNames[fileName];
+    return showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text(
+              'File details',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Text(fileData.toString()),
+                Row(
+                  children: [
+                    Text("Block hash: "),
+                    Flexible(
+                        child: SelectableText(
+                      fileData["merkleRootHash"],
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                    ))
+                  ],
+                ),
+                Row(
+                  children: [
+                    Text("Previous block hash: "),
+                    SelectableText(fileData["prevBlockHash"],
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                  ],
+                ),
+                Row(
+                  children: [
+                    Text("Time created: "),
+                    SelectableText(
+                        _convertTimestampToDate(fileData["timeCreated"]),
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                  ],
+                ),
+                Row(
+                  children: [
+                    Text("File name: "),
+                    SelectableText(fileData["fileName"],
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                  ],
+                ),
+                Row(
+                  children: [
+                    Text("File extension: "),
+                    SelectableText(fileData["fileExtension"],
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                  ],
+                ),
+                Row(
+                  children: [
+                    Text("File size, in bytes: "),
+                    SelectableText(fileData["fileSizeBytes"].toString(),
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                  ],
+                ),
+                Row(
+                  children: [
+                    Text("Shards created: "),
+                    SelectableText(fileData["shardsCreated"].toString(),
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                  ],
+                ),
+                Row(
+                  children: [
+                    Text("Event cost: "),
+                    SelectableText(fileData["eventCost"].toString(),
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                  ],
+                ),
+                Row(
+                  children: [
+                    Text("Shard hosts: "),
+                    SelectableText(fileData["shardHosts"].toString(),
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                  ],
+                ),
+              ],
+            ),
+            actions: <Widget>[
+              FlatButton(
+                color: Colors.green,
+                textColor: Colors.white,
+                child: const Text('OK'),
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+              ),
+            ],
           );
         });
   }
@@ -671,8 +774,9 @@ class MyHomePageState extends State<MyHomePage> {
                                 }),
                             Container(
                                 alignment: Alignment.centerLeft,
-                                margin: EdgeInsets.only(left: 20, bottom: 5),
-                                child: Text("Search results",
+                                margin:
+                                    const EdgeInsets.only(left: 20, bottom: 5),
+                                child: const Text("Search results",
                                     style: TextStyle(
                                         color: Colors.grey, fontSize: 10))),
                             Container(height: 1, color: Colors.grey[100]),
@@ -685,14 +789,42 @@ class MyHomePageState extends State<MyHomePage> {
                 ),
                 fileNames.isNotEmpty
                     ? displayBlockchainFiles()
-                    : Expanded(
-                        child:
-                            Container(child: Center(child: Text("No files"))))
+                    : const Expanded(child: Center(child: Text("No files")))
               ],
             ),
             Align(
-                alignment: Alignment.bottomRight,
-                child: AvailableTokensView(_token)),
+              alignment: Alignment.bottomRight,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                      decoration: BoxDecoration(
+                          color: Colors.grey[400],
+                          borderRadius: BorderRadius.circular(3)),
+                      margin: const EdgeInsets.only(bottom: 10, left: 10),
+                      padding: const EdgeInsets.only(
+                          left: 7, right: 7, top: 3, bottom: 4),
+                      child: FutureBuilder(
+                        future: NetworkInfo().getWifiIP(),
+                        builder: (context, snapshot) {
+                          if (snapshot.hasData) {
+                            return SelectableText(
+                              "User iD: ${DomainRegistry().generateID(snapshot.data, BlockchainServer.port)}",
+                              style: TextStyle(
+                                  fontSize: 12, color: Colors.grey[900]),
+                            );
+                          } else {
+                            return const SizedBox(
+                                width: 12,
+                                height: 12,
+                                child: CircularProgressIndicator());
+                          }
+                        },
+                      )),
+                  AvailableTokensView(_token),
+                ],
+              ),
+            )
           ],
         ),
       ),
