@@ -124,10 +124,10 @@ class MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  void partitionFile() async {
+  Future<bool> partitionFile() async {
     if (knownNodes.isEmpty) {
       MessageHandler.showFailureMessage(context, "You have no known nodes");
-      return;
+      return false;
     }
 
     FilePickerResult result = await FilePicker.platform.pickFiles();
@@ -148,7 +148,6 @@ class MyHomePageState extends State<MyHomePage> {
     String filePathWithoutFileName =
         filePath.substring(0, filePath.length - platformFile.name.length);
     String myIP = await NetworkInfo().getWifiIP();
-    int myPort = BlockchainServer.port;
 
     final readFile = await File(file.path).open();
 
@@ -184,12 +183,10 @@ class MyHomePageState extends State<MyHomePage> {
     }
     pd.close();
 
-    bool errorOccured = false;
     for (int i = 0; i < knownNodes.length; i++) {
       String receivingNodeAddr = knownNodes[i];
       sendFile(receivingNodeAddr, fileName, f: partitionFiles[i])
           .catchError((e, st) {
-        errorOccured = true;
         MessageHandler.showFailureMessage(context, e.toString());
         return;
       });
@@ -198,25 +195,18 @@ class MyHomePageState extends State<MyHomePage> {
     Block tempBlock = await BlockChain.createNewBlock(
         bytes, platformFile, result, knownNodes);
 
+    _sendBlocksToKnownNodes(myIP, tempBlock);
+    return true;
+  }
+
+  void _sendBlocksToKnownNodes(String myIP, Block tempBlock) {
+    int myPort = BlockchainServer.port;
     for (int i = 0; i < knownNodes.length; i++) {
       String receivingNodeAddr = knownNodes[i];
       BlockChain.sendBlockchain(receivingNodeAddr, tempBlock);
     }
 
     BlockChain.sendBlockchain("$myIP:$myPort", tempBlock);
-
-    if (!errorOccured) {
-      setState(() {
-        Map<String, dynamic> blockchain = getBlockchain();
-        blockchain["blocks"].forEach((key, value) {
-          trie.insert(key);
-
-          fileNames[key] = blockchain["blocks"][key];
-        });
-
-        MessageHandler.showToast(context, "Partition success");
-      });
-    }
   }
 
   void combine() async {
@@ -584,6 +574,20 @@ class MyHomePageState extends State<MyHomePage> {
         });
   }
 
+  void refreshBlockchain() {
+    print(getBlockchain());
+    setState(() {
+      Map<String, dynamic> blockchain = getBlockchain();
+      blockchain["blocks"].forEach((key, value) {
+        trie.insert(key);
+
+        fileNames[key] = blockchain["blocks"][key];
+      });
+
+      MessageHandler.showToast(context, "Partition success");
+    });
+  }
+
   void addNode({String addr}) async {
     String address = addr;
 
@@ -602,11 +606,11 @@ class MyHomePageState extends State<MyHomePage> {
         int myPort = BlockchainServer.port;
 
         address = "$ipAddress:$portNumber";
-        await Dio().post("http://$address/add_node",
-            data: FormData.fromMap({
-              "sendingNodeAddr": "$myIP:$myPort",
-              "addr": address,
-            }));
+        // await Dio().post("http://$address/add_node",
+        //     data: FormData.fromMap({
+        //       "sendingNodeAddr": "$myIP:$myPort",
+        //       "addr": address,
+        //     }));
         knownNodes.add(address);
         MessageHandler.showSuccessMessage(
             context, "$address is now a known node");

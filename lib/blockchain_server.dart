@@ -125,6 +125,8 @@ class BlockchainServer {
         BlockChain.addBlockToBlockchain();
       }
 
+      state.refreshBlockchain();
+
       return Response.ok("done");
     });
 
