@@ -374,6 +374,20 @@ class MyHomePageState extends State<MyHomePage> {
             ),
             actions: <Widget>[
               FlatButton(
+                // color: Colors.green,
+                textColor: Colors.blue,
+                child: const Text(
+                  'Add self',
+                  style: TextStyle(
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+                onPressed: () async {
+                  _textIPController.text = await NetworkInfo().getWifiIP();
+                  _textPortController.text = BlockchainServer.port.toString();
+                },
+              ),
+              FlatButton(
                 color: Colors.green,
                 textColor: Colors.white,
                 child: const Text('OK'),
@@ -438,7 +452,7 @@ class MyHomePageState extends State<MyHomePage> {
                         Container(
                           alignment: Alignment.centerRight,
                           child: Text(
-                            "Uploaded: ${_convertTimestampToDate(fileNames[fileNames.keys.elementAt(index)]["timeCreated"])}",
+                            "Uploaded on: ${_convertTimestampToDate(fileNames[fileNames.keys.elementAt(index)]["timeCreated"])}",
                             style: const TextStyle(
                                 fontSize: 11, color: Colors.grey),
                           ),
@@ -488,7 +502,7 @@ class MyHomePageState extends State<MyHomePage> {
                 // Text(fileData.toString()),
                 Row(
                   children: [
-                    Text("Block hash: "),
+                    const Text("Block hash: "),
                     Flexible(
                         child: SelectableText(
                       fileData["merkleRootHash"],
@@ -509,7 +523,7 @@ class MyHomePageState extends State<MyHomePage> {
                 ),
                 Row(
                   children: [
-                    Text("Time created: "),
+                    const Text("Time created: "),
                     SelectableText(
                         _convertTimestampToDate(fileData["timeCreated"]),
                         style: TextStyle(fontSize: 14, color: Colors.grey[600]))
@@ -517,21 +531,21 @@ class MyHomePageState extends State<MyHomePage> {
                 ),
                 Row(
                   children: [
-                    Text("File name: "),
+                    const Text("File name: "),
                     SelectableText(fileData["fileName"],
                         style: TextStyle(fontSize: 14, color: Colors.grey[600]))
                   ],
                 ),
                 Row(
                   children: [
-                    Text("File extension: "),
+                    const Text("File extension: "),
                     SelectableText(fileData["fileExtension"],
                         style: TextStyle(fontSize: 14, color: Colors.grey[600]))
                   ],
                 ),
                 Row(
                   children: [
-                    Text("File size, in bytes: "),
+                    const Text("File size, in bytes: "),
                     SelectableText(fileData["fileSizeBytes"].toString(),
                         style: TextStyle(fontSize: 14, color: Colors.grey[600]))
                   ],
@@ -545,7 +559,7 @@ class MyHomePageState extends State<MyHomePage> {
                 ),
                 Row(
                   children: [
-                    Text("Event cost: "),
+                    const Text("Event cost: "),
                     SelectableText(
                         "${fileData["eventCost"].toString()} token(s)",
                         style: TextStyle(fontSize: 14, color: Colors.grey[600]))
@@ -553,9 +567,19 @@ class MyHomePageState extends State<MyHomePage> {
                 ),
                 Row(
                   children: [
-                    Text("Shard hosts: "),
+                    const Text("Shard hosts: "),
                     SelectableText(fileData["shardHosts"].toString(),
                         style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                  ],
+                ),
+                Row(
+                  children: [
+                    const Text("File hashes: "),
+                    Flexible(
+                      child: SelectableText(fileData["fileHashes"].toString(),
+                          style:
+                              TextStyle(fontSize: 14, color: Colors.grey[600])),
+                    )
                   ],
                 ),
               ],
@@ -575,7 +599,6 @@ class MyHomePageState extends State<MyHomePage> {
   }
 
   void refreshBlockchain() {
-    print(getBlockchain());
     setState(() {
       Map<String, dynamic> blockchain = getBlockchain();
       blockchain["blocks"].forEach((key, value) {
@@ -606,11 +629,11 @@ class MyHomePageState extends State<MyHomePage> {
         int myPort = BlockchainServer.port;
 
         address = "$ipAddress:$portNumber";
-        await Dio().post("http://$address/add_node",
-            data: FormData.fromMap({
-              "sendingNodeAddr": "$myIP:$myPort",
-              "addr": address,
-            }));
+        // await Dio().post("http://$address/add_node",
+        //     data: FormData.fromMap({
+        //       "sendingNodeAddr": "$myIP:$myPort",
+        //       "addr": address,
+        //     }));
         knownNodes.add(address);
         MessageHandler.showSuccessMessage(
             context, "$address is now a known node");
@@ -632,20 +655,20 @@ class MyHomePageState extends State<MyHomePage> {
 
     server.startServer();
     requestStorageLocationDialog();
+    DomainRegistry.generateID();
   }
 
   @override
   Widget build(BuildContext context) {
-    NetworkInfo().getWifiIP().then((ip) {
-      print(DomainRegistry().generateID(ip, BlockchainServer.port));
-    });
     Map<String, dynamic> blockchain = getBlockchain();
     fileNames.clear();
 
     blockchain["blocks"].forEach((fileName, value) {
-      trie.insert(fileName);
+      if (fileName != "genesis") {
+        trie.insert(fileName);
 
-      fileNames[fileName] = blockchain["blocks"][fileName];
+        fileNames[fileName] = blockchain["blocks"][fileName];
+      }
     });
 
     return SafeArea(
@@ -819,9 +842,23 @@ class MyHomePageState extends State<MyHomePage> {
                     ),
                   ],
                 ),
-                fileNames.isNotEmpty
-                    ? displayBlockchainFiles()
-                    : const Expanded(child: Center(child: Text("No files")))
+                if (fileNames.isNotEmpty)
+                  displayBlockchainFiles()
+                else
+                  Expanded(
+                      child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      Text(
+                        "No files",
+                        style: TextStyle(),
+                      ),
+                      Text(
+                        "Click 'Upload' to begin uploading files.",
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                  ))
               ],
             ),
             Align(
@@ -841,7 +878,7 @@ class MyHomePageState extends State<MyHomePage> {
                         builder: (context, snapshot) {
                           if (snapshot.hasData) {
                             return SelectableText(
-                              "User ID: ${DomainRegistry().generateID(snapshot.data, BlockchainServer.port)}",
+                              "User ID: ${DomainRegistry.id}",
                               style: TextStyle(
                                   fontSize: 12, color: Colors.grey[700]),
                             );

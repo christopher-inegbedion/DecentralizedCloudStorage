@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:testwindowsapp/blockchain_server.dart';
+import 'package:testwindowsapp/domain_regisrty.dart';
 import 'package:testwindowsapp/token.dart';
 import 'package:http/http.dart' as http;
 
@@ -28,20 +29,22 @@ class BlockChain {
     int fileSizeBytes = file.size;
     double eventCost = Token.calculateFileCost(fileSizeBytes);
     Map<String, String> shardHosts = {};
+    List<String> fileHashes = [];
 
     for (int i = 0; i < knownNodes.length; i++) {
       shardHosts["$i"] = knownNodes[i];
     }
 
     int timeCreated = DateTime.now().millisecondsSinceEpoch;
-    String fileHost =
-        "${await NetworkInfo().getWifiIP()}:${BlockchainServer.port}";
+    String fileHost = DomainRegistry.id;
     String merkleHashSalt = Block.getRandString();
     String shardByteHashString = "";
 
     for (List<int> byteData in shardByteHash) {
       var digest = crypto.sha256.convert(GZipCodec().decode(byteData));
-      shardByteHashString = digest.toString();
+
+      shardByteHashString += digest.toString();
+      fileHashes.add(shardByteHashString);
     }
 
     Block newBlock = Block(
@@ -53,6 +56,7 @@ class BlockChain {
         shardHosts,
         timeCreated,
         fileHost,
+        fileHashes,
         merkleHashSalt,
         "",
         shardByteHashString);
@@ -121,6 +125,7 @@ class Block {
   Map<String, String> shardHosts;
   int timeCreated;
   String fileHost;
+  List<String> fileHashes;
   String salt;
   String prevBlockHash;
   String merkleTreeRootHash;
@@ -142,6 +147,7 @@ class Block {
       this.shardHosts,
       this.timeCreated,
       this.fileHost,
+      this.fileHashes,
       this.salt,
       this.prevBlockHash,
       this._shardByteHash);
@@ -173,6 +179,7 @@ class Block {
     shardHosts = Map<String, String>.from(blockData["shardHosts"]);
     timeCreated = blockData["timeCreated"];
     fileHost = blockData["fileHost"];
+    fileHashes = List<String>.from(blockData["fileHashes"]);
     salt = blockData["salt"];
     prevBlockHash = blockData["prevBlockHash"];
     _shardByteHash = blockData["shardByteHash"];
@@ -206,6 +213,7 @@ class Block {
       "shardHosts": shardHosts,
       "timeCreated": timeCreated,
       "fileHost": fileHost,
+      "fileHashes": fileHashes,
       "salt": salt,
       "merkleRootHash": merkleTreeRootHash,
       "prevBlockHash": prevBlockHash,
