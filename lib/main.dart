@@ -610,6 +610,10 @@ class MyHomePageState extends State<MyHomePage> {
         MessageHandler.showFailureMessage(context, "An error occured");
         debugPrint(stacktrace.toString());
       }
+    } else {
+      knownNodes.add(address);
+      MessageHandler.showSuccessMessage(
+          context, "$address is now a known node");
     }
   }
 
