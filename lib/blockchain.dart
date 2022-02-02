@@ -1,12 +1,9 @@
 import 'dart:convert';
 
-import 'package:convert/convert.dart';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart' as crypto;
-import 'package:dart_merkle_lib/dart_merkle_lib.dart';
-import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:network_info_plus/network_info_plus.dart';
@@ -40,7 +37,6 @@ class BlockChain {
     String fileHost =
         "${await NetworkInfo().getWifiIP()}:${BlockchainServer.port}";
     String merkleHashSalt = Block.getRandString();
-    String prevBlockHash = blocks[blocks.length - 1].merkleTreeRootHash;
     String shardByteHashString = "";
 
     for (List<int> byteData in shardByteHash) {
@@ -58,10 +54,8 @@ class BlockChain {
         timeCreated,
         fileHost,
         merkleHashSalt,
-        prevBlockHash,
+        "",
         shardByteHashString);
-
-    // blocks.add(newBlock);
 
     return newBlock;
   }
@@ -82,14 +76,14 @@ class BlockChain {
     List tmpCopy = _temporaryBlockPool;
     updatingBlockchain = true;
     for (Block block in _temporaryBlockPool) {
+      block.prevBlockHash = blocks[blocks.length - 1].merkleTreeRootHash;
       block.merkleTreeRootHash = block.createBlockHash();
       blocks.add(block);
     }
-    print(_temporaryBlockPool);
+
     _temporaryBlockPool.removeWhere((element) {
       return tmpCopy.contains(element);
     });
-    print(_temporaryBlockPool);
 
     if (_temporaryBlockPool.isNotEmpty) {
       addBlockToBlockchain();
@@ -161,7 +155,7 @@ class Block {
     shardHosts = {};
     timeCreated = 0;
     fileHost = "";
-    salt = getRandString();
+    salt = "salt";
     prevBlockHash = "";
     _shardByteHash = "";
 
