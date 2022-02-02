@@ -598,9 +598,13 @@ class MyHomePageState extends State<MyHomePage> {
         String ipAddress = result[0];
         String portNumber = result[1];
 
+        String myIP = await NetworkInfo().getWifiIP();
+        int myPort = BlockchainServer.port;
+
         address = "$ipAddress:$portNumber";
         await Dio().post("http://$address/add_node",
             data: FormData.fromMap({
+              "sendingNodeAddr": "$myIP:$myPort",
               "addr": address,
             }));
         knownNodes.add(address);

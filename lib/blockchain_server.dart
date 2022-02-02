@@ -51,8 +51,8 @@ class BlockchainServer {
           formData.name: await formData.part.readString(),
       };
 
-      String addr = parameters["addr"];
-      print(addr);
+      String addr = parameters["sendingNodeAddr"];
+
       state.addNode(addr: addr);
       return Response.ok("done");
     });
