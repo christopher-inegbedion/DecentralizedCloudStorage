@@ -606,11 +606,11 @@ class MyHomePageState extends State<MyHomePage> {
         int myPort = BlockchainServer.port;
 
         address = "$ipAddress:$portNumber";
-        // await Dio().post("http://$address/add_node",
-        //     data: FormData.fromMap({
-        //       "sendingNodeAddr": "$myIP:$myPort",
-        //       "addr": address,
-        //     }));
+        await Dio().post("http://$address/add_node",
+            data: FormData.fromMap({
+              "sendingNodeAddr": "$myIP:$myPort",
+              "addr": address,
+            }));
         knownNodes.add(address);
         MessageHandler.showSuccessMessage(
             context, "$address is now a known node");
