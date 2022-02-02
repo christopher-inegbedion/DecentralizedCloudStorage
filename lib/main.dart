@@ -593,7 +593,10 @@ class MyHomePageState extends State<MyHomePage> {
         String portNumber = result[1];
 
         address = "$ipAddress:$portNumber";
-
+        await Dio().post("http://$address/add_node",
+            data: FormData.fromMap({
+              "addr": address,
+            }));
         knownNodes.add(address);
         MessageHandler.showSuccessMessage(
             context, "$address is now a known node");
