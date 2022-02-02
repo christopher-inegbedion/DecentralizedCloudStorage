@@ -6,23 +6,27 @@ import 'dart:math';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:dart_merkle_lib/dart_merkle_lib.dart';
-import 'package:dart_merkle_lib/src/fast_root.dart';
-import 'package:dart_merkle_lib/src/proof.dart';
+import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:testwindowsapp/blockchain_server.dart';
+import 'package:testwindowsapp/token.dart';
 
 class BlockChain {
   BlockChain._();
 
-  static List<_Block> blocks = [_Block.genesis()];
+  static List<Block> blocks = [Block.genesis()];
 
-  static void createNewBlock(List<List<int>> shardByteData, PlatformFile file,
-      FilePickerResult result, List<String> knownNodes) async {
+  static Future<Block> createNewBlock(
+      List<List<int>> shardByteData,
+      PlatformFile file,
+      FilePickerResult result,
+      List<String> knownNodes,
+      String receipientAddr) async {
     String fileName = getFileName(file, result);
     String fileExtension = file.extension;
     int fileSizeBytes = file.size;
-    double eventCost = 2;
+    double eventCost = Token.calculateFileCost(fileSizeBytes);
     Map<String, String> shardHosts = {};
 
     for (int i = 0; i < knownNodes.length; i++) {
@@ -32,10 +36,10 @@ class BlockChain {
     int timeCreated = DateTime.now().millisecondsSinceEpoch;
     String fileHost =
         "${await NetworkInfo().getWifiIP()}:${BlockchainServer.port}";
-    String merkleHashSalt = _Block.getRandString();
+    String merkleHashSalt = Block.getRandString();
     String prevBlockHash = blocks[blocks.length - 1].merkleTreeRootHash;
 
-    _Block newBlock = _Block(
+    Block newBlock = Block(
         fileName,
         fileExtension,
         fileSizeBytes,
@@ -48,7 +52,26 @@ class BlockChain {
         prevBlockHash,
         shardByteData);
 
-    blocks.add(newBlock);
+    // blocks.add(newBlock);
+
+    var formData = FormData.fromMap({"block": newBlock.toJson()});
+
+    await Dio().post(
+      "http://$receipientAddr/send_block",
+      data: formData,
+    );
+
+    return newBlock;
+  }
+
+  static void createCompleteBlock(Block temporaryBlock) {
+    temporaryBlock.merkleTreeRootHash = temporaryBlock.createBlockHash();
+  }
+
+  static void addBlockToBlockchain(Block completeBlock) {
+    if (completeBlock.merkleTreeRootHash.isEmpty) {
+      throw Exception("Only complete blocks can be added to blockchain");
+    }
   }
 
   static String getFileName(PlatformFile file, FilePickerResult result) {
@@ -70,7 +93,7 @@ class BlockChain {
   }
 }
 
-class _Block {
+class Block {
   String fileName;
   String fileExtension;
   int fileSizeBytes;
@@ -89,10 +112,10 @@ class _Block {
   static const int saltLength = 10;
 
   void init() {
-    merkleTreeRootHash = createBlockHash(_shardByteData, salt, prevBlockHash);
+    merkleTreeRootHash = createBlockHash();
   }
 
-  _Block(
+  Block(
       this.fileName,
       this.fileExtension,
       this.fileSizeBytes,
@@ -103,11 +126,9 @@ class _Block {
       this.fileHost,
       this.salt,
       this.prevBlockHash,
-      this._shardByteData) {
-    init();
-  }
+      this._shardByteData);
 
-  _Block.genesis() {
+  Block.genesis() {
     fileName = "genesis";
     fileExtension = "";
     fileSizeBytes = 0;
@@ -120,7 +141,7 @@ class _Block {
     prevBlockHash = "";
     _shardByteData = [];
 
-    init();
+    merkleTreeRootHash = createBlockHash();
   }
 
   static Uint8List sha256(data) {
@@ -133,12 +154,11 @@ class _Block {
     return base64UrlEncode(values);
   }
 
-  static String createBlockHash(
-      List<List<int>> shardByteData, String salt, String prevHash) {
+  String createBlockHash() {
     List<String> hashedData = [];
 
-    if (shardByteData.isNotEmpty) {
-      for (List<int> byteData in shardByteData) {
+    if (_shardByteData.isNotEmpty) {
+      for (List<int> byteData in _shardByteData) {
         var digest = crypto.sha256.convert(GZipCodec().decode(byteData));
         hashedData.add(digest.toString());
       }
@@ -148,7 +168,7 @@ class _Block {
       Uint8List root = fastRoot(hashedByteData, sha256);
       String merkleRoot = hex.encode(root);
       String merkleRootAndKey = crypto.sha256
-          .convert((merkleRoot + salt + prevHash).runes.toList())
+          .convert((merkleRoot + salt + prevBlockHash).runes.toList())
           .toString();
 
       return merkleRootAndKey;

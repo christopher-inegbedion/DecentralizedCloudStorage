@@ -20,6 +20,10 @@ class Token {
         double.parse(_tokenFormula(minsElapsed).toStringAsFixed(3));
   }
 
+  static double calculateFileCost(int bytes) {
+    return (9.31 * pow(10, -10)) * bytes;
+  }
+
   double _tokenFormula(int minsElapsed) {
     double a = 10 - (timeToConsumeAvailStorage / 2);
     double b = 10 - (timeToConsumeShardDataStoredStorage / 2);

@@ -88,7 +88,9 @@ class BlockchainServer {
             utf8.encode((await requestingFile.readAsBytes()).toString()))
       });
 
-      dio.Dio().post("http://${parameters["ip"]}:${parameters["port"]}/receive_file", data: formData);
+      dio.Dio().post(
+          "http://${parameters["ip"]}:${parameters["port"]}/receive_file",
+          data: formData);
 
       return Response.ok(
           GZipCodec().decode((await requestingFile.readAsBytes())).toString());
@@ -109,6 +111,16 @@ class BlockchainServer {
       File("$savePath/$fileName.$fileExtension")
           .writeAsBytes(GZipCodec().decode(byteArray), mode: FileMode.append);
       return Response.ok("done");
+    });
+
+    app.post("/send_block", (Request request) async {
+      final parameters = <String, dynamic>{
+        await for (final formData in request.multipartFormData)
+          formData.name: await formData.part.readString(),
+      };
+
+      Map<String, dynamic> block = parameters["block"];
+      print(block);
     });
 
     var server = await io.serve(app, ip, port);

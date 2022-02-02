@@ -193,9 +193,14 @@ class MyHomePageState extends State<MyHomePage> {
       });
     }
 
+    for (int i = 0; i < knownNodes.length; i++) {
+      String receivingNodeAddr = knownNodes[i];
+      BlockChain.createNewBlock(
+          bytes, platformFile, result, knownNodes, receivingNodeAddr);
+    }
+
     if (!errorOccured) {
       setState(() {
-        BlockChain.createNewBlock(bytes, platformFile, result, knownNodes);
         Map<String, dynamic> blockchain = getBlockchain();
         blockchain["blocks"].forEach((key, value) {
           trie.insert(key);
@@ -452,7 +457,7 @@ class MyHomePageState extends State<MyHomePage> {
                     child: IconButton(
                       splashRadius: 10,
                       icon: const Icon(
-                        Icons.info,
+                        Icons.description,
                         size: 12,
                       ),
                       onPressed: () {
@@ -497,9 +502,13 @@ class MyHomePageState extends State<MyHomePage> {
                 ),
                 Row(
                   children: [
-                    Text("Previous block hash: "),
-                    SelectableText(fileData["prevBlockHash"],
-                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                    Text("Previous block hash: ",
+                        style: TextStyle(color: Colors.grey[800])),
+                    Flexible(
+                      child: SelectableText(fileData["prevBlockHash"],
+                          style:
+                              TextStyle(fontSize: 14, color: Colors.grey[600])),
+                    )
                   ],
                 ),
                 Row(
@@ -533,7 +542,7 @@ class MyHomePageState extends State<MyHomePage> {
                 ),
                 Row(
                   children: [
-                    Text("Shards created: "),
+                    const Text("Shards created: "),
                     SelectableText(fileData["shardsCreated"].toString(),
                         style: TextStyle(fontSize: 14, color: Colors.grey[600]))
                   ],
@@ -541,7 +550,8 @@ class MyHomePageState extends State<MyHomePage> {
                 Row(
                   children: [
                     Text("Event cost: "),
-                    SelectableText(fileData["eventCost"].toString(),
+                    SelectableText(
+                        "${fileData["eventCost"].toString()} token(s)",
                         style: TextStyle(fontSize: 14, color: Colors.grey[600]))
                   ],
                 ),
@@ -580,10 +590,10 @@ class MyHomePageState extends State<MyHomePage> {
         String myIP = await NetworkInfo().getWifiIP();
         int myPort = BlockchainServer.port;
         address = "$ipAddress:$portNumber";
-        await Dio().post("http://$address/add_node",
-            data: FormData.fromMap({
-              "addr": "$myIP:$myPort",
-            }));
+        // await Dio().post("http://$address/add_node",
+        //     data: FormData.fromMap({
+        //       "addr": "$myIP:$myPort",
+        //     }));
       } catch (e, stacktrace) {
         MessageHandler.showFailureMessage(context, e.toString());
       }
@@ -800,18 +810,18 @@ class MyHomePageState extends State<MyHomePage> {
                   Container(
                       decoration: BoxDecoration(
                           color: Colors.grey[400],
-                          borderRadius: BorderRadius.circular(3)),
+                          borderRadius: BorderRadius.circular(2)),
                       margin: const EdgeInsets.only(bottom: 10, left: 10),
                       padding: const EdgeInsets.only(
-                          left: 7, right: 7, top: 3, bottom: 4),
+                          left: 5, right: 5, top: 0, bottom: 3),
                       child: FutureBuilder(
                         future: NetworkInfo().getWifiIP(),
                         builder: (context, snapshot) {
                           if (snapshot.hasData) {
                             return SelectableText(
-                              "User iD: ${DomainRegistry().generateID(snapshot.data, BlockchainServer.port)}",
+                              "User ID: ${DomainRegistry().generateID(snapshot.data, BlockchainServer.port)}",
                               style: TextStyle(
-                                  fontSize: 12, color: Colors.grey[900]),
+                                  fontSize: 12, color: Colors.grey[700]),
                             );
                           } else {
                             return const SizedBox(
