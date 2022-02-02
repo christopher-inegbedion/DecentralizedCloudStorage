@@ -147,6 +147,8 @@ class MyHomePageState extends State<MyHomePage> {
             result.files.single.name.length);
     String filePathWithoutFileName =
         filePath.substring(0, filePath.length - platformFile.name.length);
+    String myIP = await NetworkInfo().getWifiIP();
+    int myPort = BlockchainServer.port;
 
     final readFile = await File(file.path).open();
 
@@ -193,11 +195,15 @@ class MyHomePageState extends State<MyHomePage> {
       });
     }
 
+    Block tempBlock = await BlockChain.createNewBlock(
+        bytes, platformFile, result, knownNodes);
+
     for (int i = 0; i < knownNodes.length; i++) {
       String receivingNodeAddr = knownNodes[i];
-      BlockChain.createNewBlock(
-          bytes, platformFile, result, knownNodes, receivingNodeAddr);
+      BlockChain.sendBlockchain(receivingNodeAddr, tempBlock);
     }
+
+    BlockChain.sendBlockchain("$myIP:$myPort", tempBlock);
 
     if (!errorOccured) {
       setState(() {

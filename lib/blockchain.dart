@@ -25,8 +25,7 @@ class BlockChain {
       List<List<int>> shardByteHash,
       PlatformFile file,
       FilePickerResult result,
-      List<String> knownNodes,
-      String receipientAddr) async {
+      List<String> knownNodes) async {
     String fileName = getFileName(file, result);
     String fileExtension = file.extension;
     int fileSizeBytes = file.size;
@@ -64,13 +63,15 @@ class BlockChain {
 
     // blocks.add(newBlock);
 
+    return newBlock;
+  }
+
+  static void sendBlockchain(String receipientAddr, Block newBlock) async {
     await http.post(Uri.parse("http://$receipientAddr/send_block"),
         headers: <String, String>{
           'ContentType': 'application/json; charset=UTF-8',
         },
         body: jsonEncode(newBlock.toJson()));
-
-    return newBlock;
   }
 
   static void addBlockToTempPool(Block tempBlock) {
