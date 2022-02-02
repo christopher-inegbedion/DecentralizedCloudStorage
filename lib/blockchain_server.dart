@@ -10,6 +10,7 @@ import 'package:shelf_router/shelf_router.dart' as shelf_router;
 import 'package:shelf/shelf.dart';
 import 'package:shelf_multipart/form_data.dart';
 import 'package:shelf/shelf_io.dart' as io;
+import 'package:testwindowsapp/blockchain.dart';
 import 'package:testwindowsapp/message_handler.dart';
 import "package:upnp/router.dart" as router;
 import 'package:upnp/upnp.dart' as upnp;
@@ -114,13 +115,17 @@ class BlockchainServer {
     });
 
     app.post("/send_block", (Request request) async {
-      final parameters = <String, dynamic>{
-        await for (final formData in request.multipartFormData)
-          formData.name: await formData.part.readString(),
-      };
+      final parameters = jsonDecode(await request.readAsString());
 
-      Map<String, dynamic> block = parameters["block"];
-      print(block);
+      Map<String, dynamic> block = parameters;
+      Block tempBlock = Block.fromJson(block);
+      BlockChain.addBlockToTempPool(tempBlock);
+
+      if (!BlockChain.updatingBlockchain) {
+        BlockChain.addBlockToBlockchain();
+      }
+
+      return Response.ok("done");
     });
 
     var server = await io.serve(app, ip, port);

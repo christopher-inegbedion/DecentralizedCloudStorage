@@ -584,23 +584,24 @@ class MyHomePageState extends State<MyHomePage> {
     if (address == null) {
       try {
         List result = await showAddNodeDialog();
+
+        if (result.isEmpty) {
+          throw Exception();
+        }
+
         String ipAddress = result[0];
         String portNumber = result[1];
 
-        String myIP = await NetworkInfo().getWifiIP();
-        int myPort = BlockchainServer.port;
         address = "$ipAddress:$portNumber";
-        // await Dio().post("http://$address/add_node",
-        //     data: FormData.fromMap({
-        //       "addr": "$myIP:$myPort",
-        //     }));
+
+        knownNodes.add(address);
+        MessageHandler.showSuccessMessage(
+            context, "$address is now a known node");
       } catch (e, stacktrace) {
-        MessageHandler.showFailureMessage(context, e.toString());
+        MessageHandler.showFailureMessage(context, "An error occured");
+        debugPrint(stacktrace.toString());
       }
     }
-
-    knownNodes.add(address);
-    MessageHandler.showSuccessMessage(context, "$address is now a known node");
   }
 
   @override
