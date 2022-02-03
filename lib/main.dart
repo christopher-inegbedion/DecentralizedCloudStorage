@@ -99,6 +99,16 @@ class MyHomePageState extends State<MyHomePage> {
   final trie = Trie();
   Token _token = Token();
 
+  Future<bool> isUserNew() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    return prefs.getBool("is_user_new") == null;
+  }
+
+  Future saveNewUser() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    prefs.setBool("is_user_new", true);
+  }
+
   Widget createTopNavBarButton(String text, IconData btnIcon, Function action) {
     return TextButton(
       onPressed: () {
@@ -199,8 +209,8 @@ class MyHomePageState extends State<MyHomePage> {
     return true;
   }
 
-  void _sendBlocksToKnownNodes(String myIP, Block tempBlock) {
-    int myPort = BlockchainServer.port;
+  void _sendBlocksToKnownNodes(String myIP, Block tempBlock) async {
+    int myPort = await BlockchainServer.getPort();
     for (int i = 0; i < knownNodes.length; i++) {
       String receivingNodeAddr = knownNodes[i];
       BlockChain.sendBlockchain(receivingNodeAddr, tempBlock);
@@ -248,14 +258,14 @@ class MyHomePageState extends State<MyHomePage> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     String savePath = prefs.getString("storage_location");
 
-    Map<String, dynamic> blocks = getBlockchain()["blocks"];
+    Map<String, dynamic> blocks = (await getBlockchain())["blocks"];
 
     List<int> fileBytes = [];
     String fileExtension = blocks[fileName]["fileExtension"];
     Map<String, dynamic> shardHosts = blocks[fileName]["shardHosts"];
     var formData = FormData.fromMap({
       "ip": await NetworkInfo().getWifiIP(),
-      "port": BlockchainServer.port,
+      "port": await BlockchainServer.getPort(),
       "fileName": fileName,
       "fileExtension": fileExtension,
     });
@@ -271,7 +281,7 @@ class MyHomePageState extends State<MyHomePage> {
   void requestStorageLocationDialog() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
 
-    if (prefs.getString(storageLocationKey) == null) {
+    if (await isUserNew()) {
       String path = await FilePicker.platform.getDirectoryPath();
 
       if (path == null) {
@@ -384,7 +394,8 @@ class MyHomePageState extends State<MyHomePage> {
                 ),
                 onPressed: () async {
                   _textIPController.text = await NetworkInfo().getWifiIP();
-                  _textPortController.text = BlockchainServer.port.toString();
+                  _textPortController.text =
+                      (await BlockchainServer.getPort()).toString();
                 },
               ),
               FlatButton(
@@ -401,8 +412,8 @@ class MyHomePageState extends State<MyHomePage> {
         });
   }
 
-  Map<String, dynamic> getBlockchain() {
-    return BlockChain.toJson();
+  Future<Map<String, dynamic>> getBlockchain() async {
+    return BlockChain.loadBlockchain();
   }
 
   String _convertTimestampToDate(int value) {
@@ -411,7 +422,19 @@ class MyHomePageState extends State<MyHomePage> {
     return d12;
   }
 
-  Widget displayBlockchainFiles() {
+  Widget displayBlockchainFiles(Map<String, dynamic> blockchain) {
+    fileNames.clear();
+
+    blockchain["blocks"].forEach((fileName, value) {
+      print(fileName);
+
+      if (fileName != "genesis") {
+        trie.insert(fileName);
+
+        fileNames[fileName] = blockchain["blocks"][fileName];
+      }
+    });
+
     return ListView.builder(
         shrinkWrap: true,
         itemCount: fileNames.length,
@@ -598,9 +621,10 @@ class MyHomePageState extends State<MyHomePage> {
         });
   }
 
-  void refreshBlockchain() {
+  void refreshBlockchain() async {
+    Map<String, dynamic> blockchain = await getBlockchain();
+
     setState(() {
-      Map<String, dynamic> blockchain = getBlockchain();
       blockchain["blocks"].forEach((key, value) {
         trie.insert(key);
 
@@ -626,14 +650,14 @@ class MyHomePageState extends State<MyHomePage> {
         String portNumber = result[1];
 
         String myIP = await NetworkInfo().getWifiIP();
-        int myPort = BlockchainServer.port;
+        int myPort = await BlockchainServer.getPort();
 
         address = "$ipAddress:$portNumber";
-        await Dio().post("http://$address/add_node",
-            data: FormData.fromMap({
-              "sendingNodeAddr": "$myIP:$myPort",
-              "addr": address,
-            }));
+        // await Dio().post("http://$address/add_node",
+        //     data: FormData.fromMap({
+        //       "sendingNodeAddr": "$myIP:$myPort",
+        //       "addr": address,
+        //     }));
         knownNodes.add(address);
         MessageHandler.showSuccessMessage(
             context, "$address is now a known node");
@@ -654,23 +678,25 @@ class MyHomePageState extends State<MyHomePage> {
     server = BlockchainServer(context, this);
 
     server.startServer();
+
     requestStorageLocationDialog();
     DomainRegistry.generateID();
+    saveNewUser();
   }
 
   @override
   Widget build(BuildContext context) {
-    Map<String, dynamic> blockchain = getBlockchain();
-    fileNames.clear();
+    getBlockchain().then((blockchain) {
+      fileNames.clear();
 
-    blockchain["blocks"].forEach((fileName, value) {
-      if (fileName != "genesis") {
-        trie.insert(fileName);
+      blockchain["blocks"].forEach((fileName, value) {
+        if (fileName != "genesis") {
+          trie.insert(fileName);
 
-        fileNames[fileName] = blockchain["blocks"][fileName];
-      }
+          fileNames[fileName] = blockchain["blocks"][fileName];
+        }
+      });
     });
-
     return SafeArea(
       child: Scaffold(
         backgroundColor: Colors.white,
@@ -692,16 +718,24 @@ class MyHomePageState extends State<MyHomePage> {
                       createTopNavBarButton("ADD NODE", Icons.person_add, () {
                         addNode();
                       }),
-                      SelectableText(
-                          "port: ${BlockchainServer.port.toString()}"),
+                      FutureBuilder(
+                          future: BlockchainServer.getPort(),
+                          builder: (context, snapshot) {
+                            if (snapshot.hasData) {
+                              int port = snapshot.data;
+                              return SelectableText("port: ${port.toString()}");
+                            } else {
+                              return CircularProgressIndicator();
+                            }
+                          }),
                       Expanded(
                         child: Container(),
                       ),
                       Align(
                         alignment: Alignment.centerRight,
-                        child:
-                            createTopNavBarButton("REFRESH", Icons.refresh, () {
-                          setState(() {});
+                        child: createTopNavBarButton("REFRESH", Icons.refresh,
+                            () async {
+                          BlockChain.loadBlockchain();
                         }),
                       )
                     ],
@@ -842,23 +876,16 @@ class MyHomePageState extends State<MyHomePage> {
                     ),
                   ],
                 ),
-                if (fileNames.isNotEmpty)
-                  displayBlockchainFiles()
-                else
-                  Expanded(
-                      child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: const [
-                      Text(
-                        "No files",
-                        style: TextStyle(),
-                      ),
-                      Text(
-                        "Click 'Upload' to begin uploading files.",
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                    ],
-                  ))
+                FutureBuilder(
+                    future: getBlockchain(),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasData) {
+                        Map<String, dynamic> data = snapshot.data;
+                        return displayBlockchainFiles(data);
+                      } else {
+                        return CircularProgressIndicator();
+                      }
+                    })
               ],
             ),
             Align(

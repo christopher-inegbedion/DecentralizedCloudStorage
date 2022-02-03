@@ -10,8 +10,8 @@ class DomainRegistry {
   DomainRegistry._();
 
   static void generateID() async {
-    List<int> bytes = utf8
-        .encode("${await NetworkInfo().getWifiIP()}${BlockchainServer.port}");
+    List<int> bytes = utf8.encode(
+        "${await NetworkInfo().getWifiIP()}${await BlockchainServer.getPort()}");
     Digest digest = sha256.convert(bytes);
 
     id = digest.toString();

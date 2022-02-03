@@ -7,6 +7,7 @@ import 'package:crypto/crypto.dart' as crypto;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:network_info_plus/network_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:testwindowsapp/blockchain_server.dart';
 import 'package:testwindowsapp/domain_regisrty.dart';
 import 'package:testwindowsapp/token.dart';
@@ -76,13 +77,16 @@ class BlockChain {
     _temporaryBlockPool.add(tempBlock);
   }
 
-  static void addBlockToBlockchain() {
+  static void addBlockToBlockchain() async {
     List tmpCopy = _temporaryBlockPool;
     updatingBlockchain = true;
     for (Block block in _temporaryBlockPool) {
       block.prevBlockHash = blocks[blocks.length - 1].merkleTreeRootHash;
       block.merkleTreeRootHash = block.createBlockHash();
       blocks.add(block);
+
+      print("blocks before save: $blocks");
+      _saveBlockchain();
     }
 
     _temporaryBlockPool.removeWhere((element) {
@@ -93,6 +97,30 @@ class BlockChain {
       addBlockToBlockchain();
     } else {
       updatingBlockchain = false;
+    }
+  }
+
+  static Future<Map<String, dynamic>> loadBlockchain() async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      Map<String, dynamic> blockchainData =
+          jsonDecode(prefs.getString("blockchain_data"));
+
+      return blockchainData;
+    } catch (e, trace) {
+      debugPrintStack(stackTrace: trace);
+    }
+
+    return null;
+  }
+
+  static void _saveBlockchain() async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      print(BlockChain.toJson());
+      prefs.setString("blockchain_data", jsonEncode(BlockChain.toJson()));
+    } catch (e, trace) {
+      debugPrintStack(stackTrace: trace);
     }
   }
 
@@ -169,8 +197,6 @@ class Block {
   }
 
   Block.fromJson(Map<String, dynamic> blockData) {
-    debugPrint("block data: ${blockData.toString()}");
-
     fileName = blockData["fileName"];
     fileExtension = blockData["fileExtension"];
     fileSizeBytes = blockData["fileSizeBytes"];

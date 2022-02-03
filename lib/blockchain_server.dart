@@ -21,7 +21,7 @@ class BlockchainServer {
   MyHomePageState state;
   BuildContext context;
   NetworkInfo _networkInfo;
-  static final port = Random().nextInt(60000);
+  static int _port;
   static String ip;
 
   BlockchainServer(this.context, this.state) {
@@ -37,9 +37,30 @@ class BlockchainServer {
     }
   }
 
+  static Future<int> getPort() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    _port = prefs.getInt("port");
+
+    if (_port == null) {
+      _port = Random().nextInt(60000);
+      prefs.setInt("port", _port);
+    }
+
+    return _port;
+  }
+
   void startServer() async {
     var app = shelf_router.Router();
     ip = await NetworkInfo().getWifiIP();
+    _port = await getPort();
+
+    if (ip == null || _port == null) {
+      throw Exception("An error occured starting the server");
+    }
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+
+    String savePath = prefs.getString("storage_location");
+    String shardDataDirPath = "$savePath/shard_data";
 
     app.get("/", (Request request) async {
       return Response.ok('hello-world');
@@ -63,11 +84,10 @@ class BlockchainServer {
           formData.name: await formData.part.readString(),
       };
 
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      String savePath = prefs.getString("storage_location");
       String fileName = parameters["fileName"];
       List<int> byteArray = List.from(json.decode(parameters["file"]));
-      File("$savePath/$fileName").writeAsBytes(byteArray);
+      (await File("$shardDataDirPath/$fileName").create(recursive: true))
+          .writeAsBytes(byteArray);
       return Response.ok('hello-world');
     });
 
@@ -78,10 +98,10 @@ class BlockchainServer {
       };
 
       SharedPreferences prefs = await SharedPreferences.getInstance();
-      String savePath = prefs.getString("storage_location");
+
       MessageHandler.showSuccessMessage(
           context, "${parameters["ip"]} is requesting a file");
-      File requestingFile = File("$savePath/${parameters['fileName']}");
+      File requestingFile = File("$shardDataDirPath/${parameters['fileName']}");
       var formData = dio.FormData.fromMap({
         "fileName": parameters["fileName"],
         "fileExtension": parameters["fileExtension"],
@@ -130,7 +150,7 @@ class BlockchainServer {
       return Response.ok("done");
     });
 
-    var server = await io.serve(app, ip, port);
+    var server = await io.serve(app, ip, _port);
     MessageHandler.showSuccessMessage(context, "Server started");
     // mapPort();
   }
@@ -151,9 +171,9 @@ class BlockchainServer {
       if (service != null) {
         service.invokeAction("AddPortMapping", {
           "NewRemoteHost": "",
-          "NewExternalPort": port,
+          "NewExternalPort": _port,
           "NewProtocol": 'TCP',
-          "NewInternalPort": port,
+          "NewInternalPort": _port,
           "NewInternalClient": await _networkInfo.getWifiIP(),
           "NewEnabled": '1',
           "NewPortMappingDescription": 'Shr application server',
