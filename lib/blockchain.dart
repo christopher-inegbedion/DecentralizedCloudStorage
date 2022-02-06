@@ -6,9 +6,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:network_info_plus/network_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:testwindowsapp/blockchain_server.dart';
 import 'package:testwindowsapp/domain_regisrty.dart';
 import 'package:testwindowsapp/token.dart';
 import 'package:http/http.dart' as http;
@@ -79,13 +77,17 @@ class BlockChain {
 
   static void addBlockToBlockchain() async {
     List tmpCopy = _temporaryBlockPool;
+    tmpCopy.sort((a, b) {
+      int aTime = a.timeCreated;
+      int bTime = b.timeCreated;
+
+      return aTime.compareTo(bTime);
+    });
     updatingBlockchain = true;
     for (Block block in _temporaryBlockPool) {
       block.prevBlockHash = blocks[blocks.length - 1].merkleTreeRootHash;
       block.merkleTreeRootHash = block.createBlockHash();
       blocks.add(block);
-
-      print("blocks before save: $blocks");
       _saveBlockchain();
     }
 
@@ -103,21 +105,36 @@ class BlockChain {
   static Future<Map<String, dynamic>> loadBlockchain() async {
     try {
       SharedPreferences prefs = await SharedPreferences.getInstance();
-      Map<String, dynamic> blockchainData =
-          jsonDecode(prefs.getString("blockchain_data"));
 
-      return blockchainData;
+      if (prefs.getString("blockchain_data") != null) {
+        Map<String, dynamic> blockchainData = Map<String, dynamic>.from(
+            jsonDecode(prefs.getString("blockchain_data")));
+
+        List<Block> i = [];
+        Map<String, dynamic> blockData = blockchainData["blocks"];
+        for (int k = 0; k < blockData.length; k++) {
+          Block j = Block.fromJson(blockData[blockData.keys.elementAt(k)]);
+          i.add(j);
+        }
+
+        blocks = i;
+        return blockchainData;
+      }
     } catch (e, trace) {
-      debugPrintStack(stackTrace: trace);
+      debugPrint(trace.toString());
     }
 
-    return null;
+    return BlockChain.toJson();
+  }
+
+  static void clearBlockchain() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    prefs.remove("blockchain_data");
   }
 
   static void _saveBlockchain() async {
     try {
       SharedPreferences prefs = await SharedPreferences.getInstance();
-      print(BlockChain.toJson());
       prefs.setString("blockchain_data", jsonEncode(BlockChain.toJson()));
     } catch (e, trace) {
       debugPrintStack(stackTrace: trace);
@@ -153,7 +170,7 @@ class Block {
   Map<String, String> shardHosts;
   int timeCreated;
   String fileHost;
-  List<String> fileHashes;
+  List<String> fileHashes = [];
   String salt;
   String prevBlockHash;
   String merkleTreeRootHash;
@@ -161,10 +178,6 @@ class Block {
   String _shardByteHash;
 
   static const int saltLength = 10;
-
-  void init() {
-    merkleTreeRootHash = createBlockHash();
-  }
 
   Block(
       this.fileName,
@@ -182,15 +195,16 @@ class Block {
 
   Block.genesis() {
     fileName = "genesis";
-    fileExtension = "";
+    fileExtension = "-";
     fileSizeBytes = 0;
     shardsCreated = 0;
     eventCost = 0;
     shardHosts = {};
     timeCreated = 0;
-    fileHost = "";
+    fileHost = "-";
+    fileHashes = [];
     salt = "salt";
-    prevBlockHash = "";
+    prevBlockHash = "-";
     _shardByteHash = "";
 
     merkleTreeRootHash = createBlockHash();
@@ -209,6 +223,7 @@ class Block {
     salt = blockData["salt"];
     prevBlockHash = blockData["prevBlockHash"];
     _shardByteHash = blockData["shardByteHash"];
+    merkleTreeRootHash = blockData["merkleRootHash"];
   }
 
   static Uint8List sha256(data) {

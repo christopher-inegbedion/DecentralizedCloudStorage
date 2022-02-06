@@ -17,7 +17,9 @@ class Token {
 
   void incrementTokens(int minsElapsed) {
     availableTokens =
-        double.parse(_tokenFormula(minsElapsed).toStringAsFixed(3));
+        (double.parse(_tokenFormula(minsElapsed).toStringAsFixed(3)) -
+                availableTokens) +
+            availableTokens;
   }
 
   static double calculateFileCost(int bytes) {

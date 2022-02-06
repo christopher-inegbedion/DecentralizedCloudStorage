@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'package:dio/dio.dart' as dio;
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shelf_router/shelf_router.dart' as shelf_router;
@@ -15,7 +16,6 @@ import 'package:testwindowsapp/message_handler.dart';
 import "package:upnp/router.dart" as router;
 import 'package:upnp/upnp.dart' as upnp;
 import 'main.dart';
-import 'package:file_picker/file_picker.dart';
 
 class BlockchainServer {
   MyHomePageState state;
@@ -49,7 +49,32 @@ class BlockchainServer {
     return _port;
   }
 
-  void startServer() async {
+  static void _uploadFileToNode(Map args) async {
+    String fileName = args["fileName"];
+    String fileExtension = args["fileExtension"];
+    List<int> fileBytes = args["fileBytes"];
+    String nodeAddr = args["addr"];
+    int index = args["depth"];
+
+    var formData = dio.FormData.fromMap({
+      "fileName": fileName,
+      "fileExtension": fileExtension,
+      "index": index,
+      "file": dio.MultipartFile.fromBytes(utf8.encode(fileBytes.toString()))
+    });
+
+    await dio.Dio().post("http://$nodeAddr/receive_file", data: formData);
+  }
+
+  static void _writeReceivedFile(Map<String, dynamic> args) async {
+    String savePath = args["savePath"];
+    List<int> byteData = args["byteData"];
+
+    await File(savePath)
+        .writeAsBytes(GZipCodec().decode(byteData), mode: FileMode.append);
+  }
+
+  static void startServer(BuildContext context, MyHomePageState state) async {
     var app = shelf_router.Router();
     ip = await NetworkInfo().getWifiIP();
     _port = await getPort();
@@ -86,6 +111,32 @@ class BlockchainServer {
 
       String fileName = parameters["fileName"];
       List<int> byteArray = List.from(json.decode(parameters["file"]));
+      int depth = int.parse(parameters["depth"]) - 1;
+
+      File file =
+          await File("$shardDataDirPath/$fileName").create(recursive: true);
+      await file.writeAsBytes(byteArray);
+
+      if (depth != 0) {
+        print("depth $depth");
+        state.getKnownNodes().forEach((node) async {
+          print(node);
+          Map<String, dynamic> formMapData = {
+            "depth": depth,
+            "fileName": fileName,
+            "file": dio.MultipartFile.fromBytes(utf8.encode((file).toString()))
+          };
+
+          dio.FormData formData = dio.FormData.fromMap(formMapData);
+          var result = await dio.Dio().post(
+            "http://$node/upload",
+            data: formData,
+          );
+        });
+      } else {
+        print("depth done");
+      }
+
       (await File("$shardDataDirPath/$fileName").create(recursive: true))
           .writeAsBytes(byteArray);
       return Response.ok('hello-world');
@@ -97,24 +148,23 @@ class BlockchainServer {
           formData.name: await formData.part.readString(),
       };
 
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-
-      MessageHandler.showSuccessMessage(
-          context, "${parameters["ip"]} is requesting a file");
       File requestingFile = File("$shardDataDirPath/${parameters['fileName']}");
-      var formData = dio.FormData.fromMap({
+
+      Map args = {
         "fileName": parameters["fileName"],
         "fileExtension": parameters["fileExtension"],
-        "file": dio.MultipartFile.fromBytes(
-            utf8.encode((await requestingFile.readAsBytes()).toString()))
+        "fileBytes": await requestingFile.readAsBytes(),
+        "addr": "${parameters["ip"]}:${parameters["port"]}",
+        "depth": int.parse(parameters["depth"])
+      };
+
+      compute(_uploadFileToNode, args).whenComplete(() {
+        state.hideDownloadProgress(int.parse(parameters["index"]));
+
+        MessageHandler.showSuccessMessage(context, "File now available");
       });
 
-      dio.Dio().post(
-          "http://${parameters["ip"]}:${parameters["port"]}/receive_file",
-          data: formData);
-
-      return Response.ok(
-          GZipCodec().decode((await requestingFile.readAsBytes())).toString());
+      return Response.ok("done");
     });
 
     app.post("/receive_file", (Request request) async {
@@ -129,8 +179,31 @@ class BlockchainServer {
       String fileExtension = parameters["fileExtension"];
       List<int> byteArray = List.from(json.decode(parameters["file"]));
 
-      File("$savePath/$fileName.$fileExtension")
-          .writeAsBytes(GZipCodec().decode(byteArray), mode: FileMode.append);
+      int newIndex = int.parse(parameters["index"]) - 1;
+
+      Map<String, dynamic> args = {
+        "savePath": "$savePath/$fileName.$fileExtension",
+        "byteData": byteArray
+      };
+      compute(_writeReceivedFile, args).whenComplete(() {
+        if (newIndex != 0) {
+          List<String> knownNodes = state.getKnownNodes();
+          knownNodes.forEach((node) async {
+            dio.FormData formData = dio.FormData.fromMap({
+              "ip": await NetworkInfo().getWifiIP(),
+              "port": await BlockchainServer.getPort(),
+              "fileName": fileName,
+              "fileExtension": fileExtension,
+              "index": -1,
+              "depth": newIndex,
+            });
+
+            await dio.Dio().post("http://$node/download", data: formData);
+          });
+        }
+        print("file received");
+      });
+
       return Response.ok("done");
     });
 
@@ -142,6 +215,7 @@ class BlockchainServer {
       BlockChain.addBlockToTempPool(tempBlock);
 
       if (!BlockChain.updatingBlockchain) {
+        print("blockchain not updating");
         BlockChain.addBlockToBlockchain();
       }
 
@@ -150,7 +224,7 @@ class BlockchainServer {
       return Response.ok("done");
     });
 
-    var server = await io.serve(app, ip, _port);
+    await io.serve(app, ip, _port, shared: true);
     MessageHandler.showSuccessMessage(context, "Server started");
     // mapPort();
   }
