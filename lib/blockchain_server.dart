@@ -121,13 +121,11 @@ class BlockchainServer {
         if (depth != 0) {
           print("depth $depth");
           state.getKnownNodes().forEach((node) async {
-            
             Map<String, dynamic> formMapData = {
               "depth": depth,
               "fileName": fileName,
-              "file":
-                  dio.MultipartFile.fromBytes(
-                    utf8.encode((await f.readAsBytes()).toString()))
+              "file": dio.MultipartFile.fromBytes(
+                  utf8.encode((await f.readAsBytes()).toString()))
             };
 
             dio.FormData formData = dio.FormData.fromMap(formMapData);
@@ -223,6 +221,10 @@ class BlockchainServer {
         print("blockchain not updating");
         BlockChain.addBlockToBlockchain();
       }
+
+      state.getKnownNodes().forEach((node) {
+        BlockChain.sendBlockchain(node, tempBlock);
+      });
 
       state.refreshBlockchain();
 
