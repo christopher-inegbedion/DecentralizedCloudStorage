@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart' as dio;
 import 'package:flutter/cupertino.dart';
@@ -115,27 +116,31 @@ class BlockchainServer {
 
       File file =
           await File("$shardDataDirPath/$fileName").create(recursive: true);
-      await file.writeAsBytes(byteArray);
+      file.writeAsBytes(byteArray).then((File f) async {
+        print(await f.length());
+        if (depth != 0) {
+          print("depth $depth");
+          state.getKnownNodes().forEach((node) async {
+            
+            Map<String, dynamic> formMapData = {
+              "depth": depth,
+              "fileName": fileName,
+              "file":
+                  dio.MultipartFile.fromBytes(
+                    utf8.encode((await f.readAsBytes()).toString()))
+            };
 
-      if (depth != 0) {
-        print("depth $depth");
-        state.getKnownNodes().forEach((node) async {
-          print(node);
-          Map<String, dynamic> formMapData = {
-            "depth": depth,
-            "fileName": fileName,
-            "file": dio.MultipartFile.fromBytes(utf8.encode((file).toString()))
-          };
-
-          dio.FormData formData = dio.FormData.fromMap(formMapData);
-          var result = await dio.Dio().post(
-            "http://$node/upload",
-            data: formData,
-          );
-        });
-      } else {
-        print("depth done");
-      }
+            dio.FormData formData = dio.FormData.fromMap(formMapData);
+            await dio.Dio().post(
+              "http://$node/upload",
+              data: formData,
+            );
+            print('dssone');
+          });
+        } else {
+          print("depth done");
+        }
+      });
 
       (await File("$shardDataDirPath/$fileName").create(recursive: true))
           .writeAsBytes(byteArray);
