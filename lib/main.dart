@@ -467,6 +467,52 @@ class MyHomePageState extends State<MyHomePage> {
         });
   }
 
+  Future showServerStartError(String ip, int port) async {
+    return showDialog(
+        barrierDismissible: false,
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text(
+              'Server error',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            content: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                    "An error occured starting the server. Please ensure you are connected to the internet, then restart the program.",
+                    style: TextStyle(color: Colors.red[600])),
+                SizedBox(
+                  height: 10,
+                ),
+                Row(
+                  children: [
+                    const Text("IP address: "),
+                    Flexible(
+                        child: SelectableText(
+                      ip ?? "Unavailable",
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                    ))
+                  ],
+                ),
+                Row(
+                  children: [
+                    const Text("Port number: "),
+                    Flexible(
+                        child: SelectableText(
+                      port == null ? "Not available" : port.toString(),
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                    ))
+                  ],
+                ),
+              ],
+            ),
+          );
+        });
+  }
+
   void _sendBlocksToKnownNodes(String myIP, Block tempBlock) async {
     Set<String> nodesReceivingShard = {};
     int myPort = await BlockchainServer.getPort();
@@ -781,13 +827,36 @@ class MyHomePageState extends State<MyHomePage> {
                                 ),
                               ),
                             ]),
-                            Container(
-                              alignment: Alignment.centerRight,
-                              child: Text(
-                                "Uploaded on: ${_convertTimestampToDate(fileNames[fileNames.keys.elementAt(index)]["timeCreated"])}",
-                                style: const TextStyle(
-                                    fontSize: 11, color: Colors.grey),
-                              ),
+                            Row(
+                              children: [
+                                Container(
+                                  margin: EdgeInsets.only(right: 2),
+                                  child: Icon(Icons.access_time_rounded,
+                                      color: Colors.grey, size: 12),
+                                ),
+                                Container(
+                                  alignment: Alignment.centerRight,
+                                  child: Text(
+                                    "Uploaded: ${_convertTimestampToDate(fileNames[fileNames.keys.elementAt(index)]["timeCreated"])}",
+                                    style: const TextStyle(
+                                        fontSize: 11, color: Colors.grey),
+                                  ),
+                                ),
+                                Container(
+                                  margin: EdgeInsets.only(left: 10, right: 1),
+                                  child: Icon(Icons.sd_card_outlined,
+                                      color: Colors.grey, size: 12),
+                                ),
+                                Container(
+                                  alignment: Alignment.centerRight,
+                                  child: Text(
+                                    filesize(fileNames[fileNames.keys
+                                        .elementAt(index)]["fileSizeBytes"]),
+                                    style: const TextStyle(
+                                        fontSize: 11, color: Colors.grey),
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         )),

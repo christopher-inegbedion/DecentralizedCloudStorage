@@ -81,6 +81,7 @@ class BlockchainServer {
     _port = await getPort();
 
     if (ip == null || _port == null) {
+      state.showServerStartError(ip, _port);
       throw Exception("An error occured starting the server");
     }
     SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -158,7 +159,6 @@ class BlockchainServer {
         "fileExtension": parameters["fileExtension"],
         "fileBytes": await requestingFile.readAsBytes(),
         "addr": "${parameters["ip"]}:${parameters["port"]}",
-        "depth": int.parse(parameters["depth"])
       };
 
       compute(_uploadFileToNode, args).whenComplete(() {
@@ -182,28 +182,11 @@ class BlockchainServer {
       String fileExtension = parameters["fileExtension"];
       List<int> byteArray = List.from(json.decode(parameters["file"]));
 
-      int newIndex = int.parse(parameters["index"]) - 1;
-
       Map<String, dynamic> args = {
         "savePath": "$savePath/$fileName.$fileExtension",
         "byteData": byteArray
       };
       compute(_writeReceivedFile, args).whenComplete(() {
-        if (newIndex != 0) {
-          List<String> knownNodes = state.getKnownNodes();
-          knownNodes.forEach((node) async {
-            dio.FormData formData = dio.FormData.fromMap({
-              "ip": await NetworkInfo().getWifiIP(),
-              "port": await BlockchainServer.getPort(),
-              "fileName": fileName,
-              "fileExtension": fileExtension,
-              "index": -1,
-              "depth": newIndex,
-            });
-
-            await dio.Dio().post("http://$node/download", data: formData);
-          });
-        }
         print("file received");
       });
 
@@ -215,18 +198,27 @@ class BlockchainServer {
 
       Map<String, dynamic> block = parameters;
       Block tempBlock = Block.fromJson(block);
-      BlockChain.addBlockToTempPool(tempBlock);
+      var blocks = BlockChain.blocks;
 
-      if (!BlockChain.updatingBlockchain) {
-        print("blockchain not updating");
-        BlockChain.addBlockToBlockchain();
+      print(blocks
+          .where((Block block) => block.fileName == tempBlock.fileName)
+          .isEmpty);
+
+      if (blocks
+          .where((Block block) => block.fileName == tempBlock.fileName)
+          .isEmpty) {
+        state.getKnownNodes().forEach((node) {
+          BlockChain.sendBlockchain(node, tempBlock);
+        });
+
+        BlockChain.addBlockToTempPool(tempBlock);
+
+        if (!BlockChain.updatingBlockchain) {
+          print("blockchain not updating");
+          BlockChain.addBlockToBlockchain();
+        }
+        state.refreshBlockchain();
       }
-
-      state.getKnownNodes().forEach((node) {
-        BlockChain.sendBlockchain(node, tempBlock);
-      });
-
-      state.refreshBlockchain();
 
       return Response.ok("done");
     });
