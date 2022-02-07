@@ -243,6 +243,7 @@ class MyHomePageState extends State<MyHomePage> {
 
     bool canUpload = await showUploadDetailsDialog(fileName,
         Token.calculateFileCost(fileSizeBytes), fileSizeBytes, partitions);
+        List<int> fileBytes = await File(file.path).readAsBytes();
 
     if (canUpload) {
       ProgressDialog pd = ProgressDialog(context: context);
@@ -251,10 +252,9 @@ class MyHomePageState extends State<MyHomePage> {
       for (int i = 0; i < partitions; i++) {
         pd.show(
             max: 100,
-            msg: 'Creating shard $i of $partitions...',
+            msg: 'Creating shard ${i+1} of $partitions...',
             barrierColor: Colors.grey);
 
-        List<int> fileBytes = await File(file.path).readAsBytes();
         Map<String, dynamic> args = {
           "byteLastLocation": byteLastLocation,
           "file": file,
