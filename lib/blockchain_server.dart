@@ -13,6 +13,7 @@ import 'package:shelf/shelf.dart';
 import 'package:shelf_multipart/form_data.dart';
 import 'package:shelf/shelf_io.dart' as io;
 import 'package:testwindowsapp/blockchain.dart';
+import 'package:testwindowsapp/known_nodes.dart';
 import 'package:testwindowsapp/message_handler.dart';
 import "package:upnp/router.dart" as router;
 import 'package:upnp/upnp.dart' as upnp;
@@ -81,7 +82,7 @@ class BlockchainServer {
     _port = await getPort();
 
     if (ip == null || _port == null) {
-      state.showServerStartError(ip, _port);
+      state.showServerStartErrorDialog(ip, _port);
       throw Exception("An error occured starting the server");
     }
     SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -99,9 +100,10 @@ class BlockchainServer {
           formData.name: await formData.part.readString(),
       };
 
-      String addr = parameters["sendingNodeAddr"];
+      String ip = parameters["addingNodeIp"];
+      int port = int.parse(parameters["addingNodePort"]);
 
-      state.addNode(addr: addr);
+      KnownNodes.addNode(ip, port, fromServer: true);
       return Response.ok("done");
     });
 
@@ -208,7 +210,7 @@ class BlockchainServer {
           .where((Block block) => block.fileName == tempBlock.fileName)
           .isEmpty) {
         state.getKnownNodes().forEach((node) {
-          BlockChain.sendBlockchain(node, tempBlock);
+          BlockChain.sendBlockchain(node.address, tempBlock);
         });
 
         BlockChain.addBlockToTempPool(tempBlock);

@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'dart:math';
 
 class Token {
@@ -19,6 +17,12 @@ class Token {
     availableTokens =
         (double.parse(_tokenFormula(minsElapsed).toStringAsFixed(3)) -
                 availableTokens) +
+            availableTokens;
+  }
+
+  void deductTokens(int minsElapsed) {
+    availableTokens =
+        double.parse(_tokenFormula(minsElapsed).toStringAsFixed(3)) -
             availableTokens;
   }
 

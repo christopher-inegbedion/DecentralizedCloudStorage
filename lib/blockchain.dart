@@ -8,8 +8,11 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:testwindowsapp/domain_regisrty.dart';
+import 'package:testwindowsapp/node.dart';
 import 'package:testwindowsapp/token.dart';
 import 'package:http/http.dart' as http;
+
+import 'known_nodes.dart';
 
 class BlockChain {
   BlockChain._();
@@ -22,7 +25,7 @@ class BlockChain {
       List<List<int>> shardByteHash,
       PlatformFile file,
       FilePickerResult result,
-      List<String> knownNodes) async {
+      List<Node> knownNodes) async {
     String fileName = getFileName(file, result);
     String fileExtension = file.extension;
     int fileSizeBytes = file.size;
@@ -30,8 +33,8 @@ class BlockChain {
     Map<String, String> shardHosts = {};
     List<String> fileHashes = [];
 
-    for (int i = 0; i < knownNodes.length; i++) {
-      shardHosts["$i"] = knownNodes[i];
+    for (int i = 0; i < KnownNodes.knownNodes.length; i++) {
+      shardHosts["$i"] = KnownNodes.knownNodes[i].address;
     }
 
     int timeCreated = DateTime.now().millisecondsSinceEpoch;

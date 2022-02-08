@@ -20,71 +20,30 @@ import 'package:sn_progress_dialog/progress_dialog.dart';
 import 'package:testwindowsapp/blockchain.dart';
 import 'package:testwindowsapp/blockchain_server.dart';
 import 'package:testwindowsapp/domain_regisrty.dart';
+import 'package:testwindowsapp/known_nodes.dart';
 import 'package:testwindowsapp/message_handler.dart';
+import 'package:testwindowsapp/node.dart';
 import 'package:testwindowsapp/token.dart';
 import 'package:testwindowsapp/token_view.dart';
 import 'package:window_size/window_size.dart';
 import 'package:retrieval/trie.dart';
 
-const String lastLoginTimeKey = "last_login_time";
-const String storageLocationKey = "storage_location";
-final downloadWorker = ei.Worker();
-final serverWorker = ei.Worker();
-
-void logLoginTime() async {
-  DateTime time = DateTime.now();
-  SharedPreferences prefs = await SharedPreferences.getInstance();
-  prefs.setInt(lastLoginTimeKey, time.millisecondsSinceEpoch);
-}
-
-void getLastLoginTime() async {
-  SharedPreferences prefs = await SharedPreferences.getInstance();
-}
-
-Future<String> selectSavePath(BuildContext context) async {
-  String fileAddress = await FilePicker.platform.saveFile(
-      dialogTitle: 'Download location',
-      fileName: 'output-file.sh',
-      lockParentWindow: true);
-
-  if (fileAddress == null) {
-    MessageHandler.showToast(context, "Save operation cancelled");
-    return null;
-  }
-
-  return fileAddress;
-}
+import 'constants.dart';
+import 'user_session.dart';
+import 'utils.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
-  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-    setWindowMinSize(const Size(800, 700));
-    setWindowMaxSize(const Size(800, 700));
-  }
-  getLastLoginTime();
-  logLoginTime();
-  downloadWorker.init(mainMessageHandler, isolateMessageHandler);
+  UserSession.lockScreenSize();
+  UserSession().getLastLoginTime();
+  UserSession().logLoginTime();
 
   runApp(const MyApp());
 }
 
-/// Handle the messages coming from the isolate
-void mainMessageHandler(dynamic data, SendPort isolateSendPort) {}
-
-/// Handle the messages coming from the main
-isolateMessageHandler(
-    dynamic data, SendPort mainSendPort, ei.SendErrorFunction sendError) async {
-  if (data is Map) {
-    final args = data;
-
-    downloadFileFromNode(args);
-  }
-}
-
 List<int> _partitionFile(Map<String, dynamic> args) {
   int byteLastLocation = args["byteLastLocation"];
-  File file = args["file"];
   int fileSizeBytes = args["fileSizeBytes"];
   int currentPartition = args["i"];
   int partitions = args["partitions"];
@@ -170,20 +129,9 @@ class MyHomePageState extends State<MyHomePage> {
   Map<String, dynamic> fileNames = {};
   List<int> filesDownloading = [];
   List<String> searchResults = [];
-  List<String> knownNodes = [];
   BlockchainServer server;
   final trie = Trie();
-  Token _token = Token();
-
-  Future<bool> isUserNew() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    return prefs.getBool("is_user_new") == null;
-  }
-
-  Future saveNewUser() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    prefs.setBool("is_user_new", true);
-  }
+  final Token _token = Token();
 
   Widget createTopNavBarButton(String text, IconData btnIcon, Function action) {
     return TextButton(
@@ -211,7 +159,7 @@ class MyHomePageState extends State<MyHomePage> {
   }
 
   Future<bool> uploadFile() async {
-    if (knownNodes.isEmpty) {
+    if (KnownNodes.knownNodes.isEmpty) {
       MessageHandler.showFailureMessage(context, "You have no known nodes");
       return false;
     }
@@ -224,7 +172,7 @@ class MyHomePageState extends State<MyHomePage> {
     final readFile = await File(file.path).open();
     int fileSizeBytes = await readFile.length();
 
-    int partitions = knownNodes.length;
+    int partitions = KnownNodes.knownNodes.length;
 
     String fileExtension = platformFile.extension;
     String fileName = platformFile.name
@@ -243,17 +191,14 @@ class MyHomePageState extends State<MyHomePage> {
 
     bool canUpload = await showUploadDetailsDialog(fileName,
         Token.calculateFileCost(fileSizeBytes), fileSizeBytes, partitions);
-        List<int> fileBytes = await File(file.path).readAsBytes();
+    List<int> fileBytes = await File(file.path).readAsBytes();
 
     if (canUpload) {
       ProgressDialog pd = ProgressDialog(context: context);
 
       int byteLastLocation = 0;
       for (int i = 0; i < partitions; i++) {
-        pd.show(
-            max: 100,
-            msg: 'Creating shard ${i+1} of $partitions...',
-            barrierColor: Colors.grey);
+        pd.show(max: 100, msg: 'Creating shard ${i + 1} of $partitions...');
 
         Map<String, dynamic> args = {
           "byteLastLocation": byteLastLocation,
@@ -271,12 +216,13 @@ class MyHomePageState extends State<MyHomePage> {
         partitionFiles.add(newFile);
 
         bytes.add(encodedFile);
+        pd.close();
       }
 
-      pd.close();
+      for (int i = 0; i < KnownNodes.knownNodes.length; i++) {
+        Node receivingNode = KnownNodes.knownNodes[i];
+        String receivingNodeAddr = receivingNode.address;
 
-      for (int i = 0; i < knownNodes.length; i++) {
-        String receivingNodeAddr = knownNodes[i];
         sendShard(receivingNodeAddr, fileName, depth, f: partitionFiles[i])
             .catchError((e, st) {
           MessageHandler.showFailureMessage(context, e.toString());
@@ -285,12 +231,206 @@ class MyHomePageState extends State<MyHomePage> {
       }
 
       Block tempBlock = await BlockChain.createNewBlock(
-          bytes, platformFile, result, knownNodes);
+          bytes, platformFile, result, KnownNodes.knownNodes);
 
       _sendBlocksToKnownNodes(myIP, tempBlock);
     }
 
     return true;
+  }
+
+  void _sendBlocksToKnownNodes(String myIP, Block tempBlock) async {
+    Set<Node> nodesReceivingShard = {};
+    int myPort = await BlockchainServer.getPort();
+
+    Node self = Node(myIP, myPort);
+
+    nodesReceivingShard.add(self);
+
+    for (int i = 0; i < KnownNodes.knownNodes.length; i++) {
+      nodesReceivingShard.add(KnownNodes.knownNodes[i]);
+    }
+
+    for (Node node in nodesReceivingShard) {
+      BlockChain.sendBlockchain(node.address, tempBlock);
+    }
+  }
+
+  void toggleSeachVisibility() {
+    searchResults.clear();
+
+    setState(() {
+      searchVisible = !searchVisible;
+      searchMode = !searchMode;
+    });
+  }
+
+  void searchKeyword(String keyword) {
+    searchResults.clear();
+    setState(() {
+      searchResults.addAll(trie.find(keyword));
+    });
+  }
+
+  void downloadFileFromBlockchain(String fileName, int index) async {
+    Map<String, dynamic> blocks = (await getBlockchain())["blocks"];
+
+    String fileExtension = blocks[fileName]["fileExtension"];
+    Map<String, dynamic> shardHosts = blocks[fileName]["shardHosts"];
+
+    Map<String, dynamic> args = {
+      "shardHosts": shardHosts,
+      "form": {
+        "ip": await NetworkInfo().getWifiIP(),
+        "port": await BlockchainServer.getPort(),
+        "fileName": fileName,
+        "fileExtension": fileExtension,
+        "index": index,
+      }
+    };
+
+    downloadFileFromNode(args);
+  }
+
+  Future<PlatformFile> _getPlatformFile() async {
+    FilePickerResult result = await FilePicker.platform.pickFiles();
+
+    return result.files.single;
+  }
+
+  Future<File> selectFile() async {
+    PlatformFile fileData = await _getPlatformFile();
+    return File((fileData.path).toString());
+  }
+
+  Future sendShard(String receipientAddr, String fileName, int depth,
+      {File f}) async {
+    if (await BlockchainServer.isNodeLive("http://$receipientAddr")) {
+      File file = f;
+
+      if (file == null) {
+        PlatformFile _platformFile = await _getPlatformFile();
+        file = File(_platformFile.path);
+      }
+
+      try {
+        ProgressDialog pd = ProgressDialog(context: context);
+        pd.show(max: 100, msg: "Uploading shard to $receipientAddr...");
+        Map<String, dynamic> args = {
+          "receipientAddr": receipientAddr,
+          "fileName": fileName,
+          "fileByteData": await file.readAsBytes(),
+          "depth": depth
+        };
+        compute(_sendShardToNode, args).whenComplete(() {
+          pd.close();
+        });
+
+        MessageHandler.showSuccessMessage(
+            context, "Node $receipientAddr has received a partition");
+      } catch (e, stacktrace) {
+        MessageHandler.showFailureMessage(context, e.toString());
+        print(e);
+      }
+    } else {
+      MessageHandler.showFailureMessage(
+          context, "Node $receipientAddr is not live");
+      throw Exception("Node $receipientAddr is not live");
+    }
+  }
+
+  void hideDownloadProgress(int index) {
+    setState(() {
+      filesDownloading.remove(index);
+    });
+  }
+
+  //Dialog methods
+  Future showDownloadDetailsDialog(String fileName, double cost,
+      int fileSizeBytes, int shardsCreated) async {
+    double availableTokes = _token.availableTokens;
+    bool canDownload = false;
+    if (availableTokes >= cost) {
+      canDownload = true;
+    }
+
+    return showDialog(
+        barrierDismissible: false,
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text(
+              'Download details',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    const Text("File name: "),
+                    Flexible(
+                        child: SelectableText(
+                      fileName,
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                    ))
+                  ],
+                ),
+                Row(
+                  children: [
+                    const Text("File size: "),
+                    Flexible(
+                        child: SelectableText(
+                      filesize(fileSizeBytes),
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                    ))
+                  ],
+                ),
+                Row(
+                  children: [
+                    const Text("Number of shards: "),
+                    Flexible(
+                        child: SelectableText(
+                      shardsCreated.toString(),
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                    ))
+                  ],
+                ),
+                Row(
+                  children: [
+                    const Text("Download cost: "),
+                    Flexible(
+                      child: SelectableText("${cost.toString()} token(s)",
+                          style: TextStyle(
+                              fontSize: 14,
+                              color:
+                                  canDownload ? Colors.grey[600] : Colors.red)),
+                    )
+                  ],
+                ),
+              ],
+            ),
+            actions: <Widget>[
+              FlatButton(
+                  textColor: Colors.red,
+                  child: const Text('cancel'),
+                  onPressed: () {
+                    Navigator.pop(context, false);
+                  }),
+              FlatButton(
+                color: Colors.green,
+                textColor: Colors.white,
+                child: const Text('OK'),
+                onPressed: canDownload
+                    ? () {
+                        _token.availableTokens = _token.availableTokens - cost;
+                        Navigator.pop(context, true);
+                      }
+                    : null,
+              ),
+            ],
+          );
+        });
   }
 
   Future showUploadDetailsDialog(String fileName, double cost,
@@ -380,94 +520,7 @@ class MyHomePageState extends State<MyHomePage> {
         });
   }
 
-  Future showDownloadDetailsDialog(String fileName, double cost,
-      int fileSizeBytes, int shardsCreated) async {
-    double availableTokes = _token.availableTokens;
-    bool canDownload = false;
-    if (availableTokes >= cost) {
-      canDownload = true;
-    }
-
-    return showDialog(
-        barrierDismissible: false,
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            title: const Text(
-              'Download details',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    const Text("File name: "),
-                    Flexible(
-                        child: SelectableText(
-                      fileName,
-                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-                    ))
-                  ],
-                ),
-                Row(
-                  children: [
-                    const Text("File size: "),
-                    Flexible(
-                        child: SelectableText(
-                      filesize(fileSizeBytes),
-                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-                    ))
-                  ],
-                ),
-                Row(
-                  children: [
-                    const Text("Number of shards: "),
-                    Flexible(
-                        child: SelectableText(
-                      shardsCreated.toString(),
-                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-                    ))
-                  ],
-                ),
-                Row(
-                  children: [
-                    const Text("Download cost: "),
-                    Flexible(
-                      child: SelectableText("${cost.toString()} token(s)",
-                          style: TextStyle(
-                              fontSize: 14,
-                              color:
-                                  canDownload ? Colors.grey[600] : Colors.red)),
-                    )
-                  ],
-                ),
-              ],
-            ),
-            actions: <Widget>[
-              FlatButton(
-                  textColor: Colors.red,
-                  child: const Text('cancel'),
-                  onPressed: () {
-                    Navigator.pop(context, false);
-                  }),
-              FlatButton(
-                color: Colors.green,
-                textColor: Colors.white,
-                child: const Text('OK'),
-                onPressed: canDownload
-                    ? () {
-                        _token.availableTokens = _token.availableTokens - cost;
-                        Navigator.pop(context, true);
-                      }
-                    : null,
-              ),
-            ],
-          );
-        });
-  }
-
-  Future showServerStartError(String ip, int port) async {
+  Future showServerStartErrorDialog(String ip, int port) async {
     return showDialog(
         barrierDismissible: false,
         context: context,
@@ -484,7 +537,7 @@ class MyHomePageState extends State<MyHomePage> {
                 Text(
                     "An error occured starting the server. Please ensure you are connected to the internet, then restart the program.",
                     style: TextStyle(color: Colors.red[600])),
-                SizedBox(
+                const SizedBox(
                   height: 10,
                 ),
                 Row(
@@ -513,81 +566,10 @@ class MyHomePageState extends State<MyHomePage> {
         });
   }
 
-  void _sendBlocksToKnownNodes(String myIP, Block tempBlock) async {
-    Set<String> nodesReceivingShard = {};
-    int myPort = await BlockchainServer.getPort();
-
-    nodesReceivingShard.add("$myIP:$myPort");
-
-    for (int i = 0; i < knownNodes.length; i++) {
-      nodesReceivingShard.add(knownNodes[i]);
-    }
-
-    for (var addr in nodesReceivingShard) {
-      BlockChain.sendBlockchain(addr, tempBlock);
-    }
-  }
-
-  void combine() async {
-    int parts = knownNodes.length;
-    String selectedDirectory = await FilePicker.platform.getDirectoryPath();
-
-    String fileAddress = await selectSavePath(context);
-
-    File createdFile = File(fileAddress);
-    List<int> shardData = [];
-    for (int i = 0; i < parts; i++) {
-      for (var shardByteData in (GZipCodec()
-          .decode(await File("$selectedDirectory/$i").readAsBytes()))) {
-        shardData.add(shardByteData);
-      }
-    }
-    createdFile.writeAsBytes(shardData, mode: FileMode.writeOnlyAppend);
-
-    MessageHandler.showToast(context, "Combine success");
-  }
-
-  void toggleSeachVisibility() {
-    searchResults.clear();
-
-    setState(() {
-      searchVisible = !searchVisible;
-      searchMode = !searchMode;
-    });
-  }
-
-  void searchKeyword(String keyword) {
-    searchResults.clear();
-    setState(() {
-      searchResults.addAll(trie.find(keyword));
-    });
-  }
-
-  void downloadFileFromBlockchain(String fileName, int index) async {
-    int backupDepth = 2;
-    Map<String, dynamic> blocks = (await getBlockchain())["blocks"];
-
-    String fileExtension = blocks[fileName]["fileExtension"];
-    Map<String, dynamic> shardHosts = blocks[fileName]["shardHosts"];
-
-    Map<String, dynamic> args = {
-      "shardHosts": shardHosts,
-      "form": {
-        "ip": await NetworkInfo().getWifiIP(),
-        "port": await BlockchainServer.getPort(),
-        "fileName": fileName,
-        "fileExtension": fileExtension,
-        "index": index,
-      }
-    };
-
-    downloadFileFromNode(args);
-  }
-
   void requestStorageLocationDialog() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
 
-    if (await isUserNew()) {
+    if (await UserSession.isUserNew()) {
       String path = await FilePicker.platform.getDirectoryPath();
 
       if (path == null) {
@@ -597,69 +579,8 @@ class MyHomePageState extends State<MyHomePage> {
         return;
       }
 
-      prefs.setString(storageLocationKey, path);
+      prefs.setString(Constants.storageLocationKey, path);
     }
-  }
-
-  Future<PlatformFile> _getPlatformFile() async {
-    FilePickerResult result = await FilePicker.platform.pickFiles();
-
-    if (result != null) {
-      PlatformFile fileData = result.files.single;
-      return fileData;
-    } else {
-      return null;
-    }
-  }
-
-  Future<File> selectFile() async {
-    PlatformFile fileData = await _getPlatformFile();
-    return File((fileData.path).toString());
-  }
-
-  Future sendShard(String receipientAddr, String fileName, int depth,
-      {File f}) async {
-    if (await BlockchainServer.isNodeLive("http://$receipientAddr")) {
-      File file = f;
-
-      if (file == null) {
-        PlatformFile _platformFile = await _getPlatformFile();
-        file = File(_platformFile.path);
-      }
-
-      try {
-        ProgressDialog pd = ProgressDialog(context: context);
-        pd.show(
-            max: 100,
-            msg: "Uploading shard to $receipientAddr...",
-            barrierColor: Colors.grey);
-        Map<String, dynamic> args = {
-          "receipientAddr": receipientAddr,
-          "fileName": fileName,
-          "fileByteData": await file.readAsBytes(),
-          "depth": depth
-        };
-        compute(_sendShardToNode, args).whenComplete(() {
-          pd.close();
-        });
-
-        MessageHandler.showSuccessMessage(
-            context, "Node $receipientAddr has received a partition");
-      } catch (e, stacktrace) {
-        MessageHandler.showFailureMessage(context, e.toString());
-        print(e);
-      }
-    } else {
-      MessageHandler.showFailureMessage(
-          context, "Node $receipientAddr is not live");
-      throw Exception("Node $receipientAddr is not live");
-    }
-  }
-
-  void hideDownloadProgress(int index) {
-    setState(() {
-      filesDownloading.remove(index);
-    });
   }
 
   Future<List> showAddNodeDialog() {
@@ -720,14 +641,152 @@ class MyHomePageState extends State<MyHomePage> {
         });
   }
 
-  Future<Map<String, dynamic>> getBlockchain() async {
-    return BlockChain.loadBlockchain();
+  Future showKnownNodesDialog() {
+    return showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('Known nodes'),
+            content: KnownNodes.knownNodes.isEmpty
+                ? const Text("Such empty")
+                : SizedBox(
+                    height: 160,
+                    width: 200,
+                    child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: KnownNodes.knownNodes.length,
+                        itemBuilder: (context, index) {
+                          return Text(KnownNodes.knownNodes[index].address);
+                        }),
+                  ),
+            actions: <Widget>[
+              FlatButton(
+                color: Colors.green,
+                textColor: Colors.white,
+                child: const Text('OK'),
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          );
+        });
   }
 
-  String _convertTimestampToDate(int value) {
-    var date = DateTime.fromMillisecondsSinceEpoch(value);
-    var d12 = DateFormat('EEE, MM-dd-yyyy, hh:mm:ss a').format(date);
-    return d12;
+  void showFileInfoDialog(String fileName, String uploader) async {
+    Map<String, dynamic> fileData = fileNames[fileName];
+    return showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text(
+              'File details',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Text(fileData.toString()),
+                Row(
+                  children: [
+                    const Text("Block hash: "),
+                    Flexible(
+                        child: SelectableText(
+                      fileData["merkleRootHash"],
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                    ))
+                  ],
+                ),
+                Row(
+                  children: [
+                    Text("Previous block hash: ",
+                        style: TextStyle(color: Colors.grey[800])),
+                    Flexible(
+                      child: SelectableText(fileData["prevBlockHash"],
+                          style:
+                              TextStyle(fontSize: 14, color: Colors.grey[600])),
+                    )
+                  ],
+                ),
+                Row(
+                  children: [
+                    const Text("Time created: "),
+                    SelectableText(
+                        convertTimestampToDate(fileData["timeCreated"]),
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                  ],
+                ),
+                Row(
+                  children: [
+                    const Text("File name: "),
+                    SelectableText(fileData["fileName"],
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                  ],
+                ),
+                Row(
+                  children: [
+                    const Text("File extension: "),
+                    SelectableText(fileData["fileExtension"],
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                  ],
+                ),
+                Row(
+                  children: [
+                    const Text("File size, in bytes: "),
+                    SelectableText(fileData["fileSizeBytes"].toString(),
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                  ],
+                ),
+                Row(
+                  children: [
+                    const Text("Shards created: "),
+                    SelectableText(fileData["shardsCreated"].toString(),
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                  ],
+                ),
+                Row(
+                  children: [
+                    const Text("Event cost: "),
+                    SelectableText(
+                        "${fileData["eventCost"].toString()} token(s)",
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                  ],
+                ),
+                Row(
+                  children: [
+                    const Text("Shard hosts: "),
+                    SelectableText(fileData["shardHosts"].toString(),
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                  ],
+                ),
+                Row(
+                  children: [
+                    const Text("File hashes: "),
+                    Flexible(
+                      child: SelectableText(fileData["fileHashes"].toString(),
+                          style:
+                              TextStyle(fontSize: 14, color: Colors.grey[600])),
+                    )
+                  ],
+                ),
+              ],
+            ),
+            actions: <Widget>[
+              FlatButton(
+                color: Colors.green,
+                textColor: Colors.white,
+                child: const Text('OK'),
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          );
+        });
+  }
+
+  Future<Map<String, dynamic>> getBlockchain() async {
+    return BlockChain.loadBlockchain();
   }
 
   Widget displayBlockchainFiles(Map<String, dynamic> blockchain) {
@@ -830,21 +889,22 @@ class MyHomePageState extends State<MyHomePage> {
                             Row(
                               children: [
                                 Container(
-                                  margin: EdgeInsets.only(right: 2),
-                                  child: Icon(Icons.access_time_rounded,
+                                  margin: const EdgeInsets.only(right: 2),
+                                  child: const Icon(Icons.access_time_rounded,
                                       color: Colors.grey, size: 12),
                                 ),
                                 Container(
                                   alignment: Alignment.centerRight,
                                   child: Text(
-                                    "Uploaded: ${_convertTimestampToDate(fileNames[fileNames.keys.elementAt(index)]["timeCreated"])}",
+                                    "Uploaded: ${convertTimestampToDate(fileNames[fileNames.keys.elementAt(index)]["timeCreated"])}",
                                     style: const TextStyle(
                                         fontSize: 11, color: Colors.grey),
                                   ),
                                 ),
                                 Container(
-                                  margin: EdgeInsets.only(left: 10, right: 1),
-                                  child: Icon(Icons.sd_card_outlined,
+                                  margin:
+                                      const EdgeInsets.only(left: 10, right: 1),
+                                  child: const Icon(Icons.sd_card_outlined,
                                       color: Colors.grey, size: 12),
                                 ),
                                 Container(
@@ -891,121 +951,9 @@ class MyHomePageState extends State<MyHomePage> {
                 ),
                 Visibility(
                     visible: filesDownloading.contains(index),
-                    child: LinearProgressIndicator())
+                    child: const LinearProgressIndicator())
               ],
             ),
-          );
-        });
-  }
-
-  void showFileInfoDialog(String fileName, String uploader) async {
-    Map<String, dynamic> fileData = fileNames[fileName];
-    return showDialog(
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            title: const Text(
-              'File details',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Text(fileData.toString()),
-                Row(
-                  children: [
-                    const Text("Block hash: "),
-                    Flexible(
-                        child: SelectableText(
-                      fileData["merkleRootHash"],
-                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-                    ))
-                  ],
-                ),
-                Row(
-                  children: [
-                    Text("Previous block hash: ",
-                        style: TextStyle(color: Colors.grey[800])),
-                    Flexible(
-                      child: SelectableText(fileData["prevBlockHash"],
-                          style:
-                              TextStyle(fontSize: 14, color: Colors.grey[600])),
-                    )
-                  ],
-                ),
-                Row(
-                  children: [
-                    const Text("Time created: "),
-                    SelectableText(
-                        _convertTimestampToDate(fileData["timeCreated"]),
-                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
-                  ],
-                ),
-                Row(
-                  children: [
-                    const Text("File name: "),
-                    SelectableText(fileData["fileName"],
-                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
-                  ],
-                ),
-                Row(
-                  children: [
-                    const Text("File extension: "),
-                    SelectableText(fileData["fileExtension"],
-                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
-                  ],
-                ),
-                Row(
-                  children: [
-                    const Text("File size, in bytes: "),
-                    SelectableText(fileData["fileSizeBytes"].toString(),
-                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
-                  ],
-                ),
-                Row(
-                  children: [
-                    const Text("Shards created: "),
-                    SelectableText(fileData["shardsCreated"].toString(),
-                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
-                  ],
-                ),
-                Row(
-                  children: [
-                    const Text("Event cost: "),
-                    SelectableText(
-                        "${fileData["eventCost"].toString()} token(s)",
-                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
-                  ],
-                ),
-                Row(
-                  children: [
-                    const Text("Shard hosts: "),
-                    SelectableText(fileData["shardHosts"].toString(),
-                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
-                  ],
-                ),
-                Row(
-                  children: [
-                    const Text("File hashes: "),
-                    Flexible(
-                      child: SelectableText(fileData["fileHashes"].toString(),
-                          style:
-                              TextStyle(fontSize: 14, color: Colors.grey[600])),
-                    )
-                  ],
-                ),
-              ],
-            ),
-            actions: <Widget>[
-              FlatButton(
-                color: Colors.green,
-                textColor: Colors.white,
-                child: const Text('OK'),
-                onPressed: () {
-                  Navigator.pop(context);
-                },
-              ),
-            ],
           );
         });
   }
@@ -1024,45 +972,8 @@ class MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  List<String> getKnownNodes() {
-    return knownNodes;
-  }
-
-  void addNode({String addr}) async {
-    String address = addr;
-
-    if (address == null) {
-      try {
-        List result = await showAddNodeDialog();
-
-        if (result.isEmpty) {
-          throw Exception();
-        }
-
-        String ipAddress = result[0];
-        String portNumber = result[1];
-
-        String myIP = await NetworkInfo().getWifiIP();
-        int myPort = await BlockchainServer.getPort();
-
-        address = "$ipAddress:$portNumber";
-        await Dio().post("http://$address/add_node",
-            data: FormData.fromMap({
-              "sendingNodeAddr": "$myIP:$myPort",
-              "addr": address,
-            }));
-        knownNodes.add(address);
-        MessageHandler.showSuccessMessage(
-            context, "$address is now a known node");
-      } catch (e, stacktrace) {
-        MessageHandler.showFailureMessage(context, "An error occured");
-        debugPrint(stacktrace.toString());
-      }
-    } else {
-      knownNodes.add(address);
-      MessageHandler.showSuccessMessage(
-          context, "$address is now a known node");
-    }
+  List<Node> getKnownNodes() {
+    return KnownNodes.knownNodes;
   }
 
   @override
@@ -1073,7 +984,7 @@ class MyHomePageState extends State<MyHomePage> {
 
     requestStorageLocationDialog();
     DomainRegistry.generateID();
-    saveNewUser();
+    UserSession.saveNewUser();
   }
 
   @override
@@ -1107,8 +1018,20 @@ class MyHomePageState extends State<MyHomePage> {
                       createTopNavBarButton("UPLOAD", Icons.upload_file, () {
                         uploadFile();
                       }),
-                      createTopNavBarButton("ADD NODE", Icons.person_add, () {
-                        addNode();
+                      createTopNavBarButton("ADD NODE", Icons.person_add,
+                          () async {
+                        List result = await showAddNodeDialog();
+                        String ip = result[0];
+                        int port = int.parse(result[1]);
+
+                        KnownNodes.addNode(ip, port).whenComplete(() {
+                          MessageHandler.showSuccessMessage(
+                              context, "Node $ip:$port has been added");
+                        });
+                      }),
+                      createTopNavBarButton("VIEW KNOWN NODES", Icons.person,
+                          () {
+                        showKnownNodesDialog();
                       }),
                       FutureBuilder(
                           future: BlockchainServer.getPort(),
@@ -1117,7 +1040,7 @@ class MyHomePageState extends State<MyHomePage> {
                               int port = snapshot.data;
                               return SelectableText("port: ${port.toString()}");
                             } else {
-                              return CircularProgressIndicator();
+                              return const CircularProgressIndicator();
                             }
                           }),
                       Expanded(
@@ -1126,7 +1049,7 @@ class MyHomePageState extends State<MyHomePage> {
                       Align(
                           alignment: Alignment.centerRight,
                           child: Container(
-                              margin: EdgeInsets.only(right: 10),
+                              margin: const EdgeInsets.only(right: 10),
                               child: AvailableTokensView(_token)))
                     ],
                   )),
@@ -1274,7 +1197,7 @@ class MyHomePageState extends State<MyHomePage> {
 
                         return displayBlockchainFiles(data);
                       } else {
-                        return CircularProgressIndicator();
+                        return const CircularProgressIndicator();
                       }
                     })
               ],
