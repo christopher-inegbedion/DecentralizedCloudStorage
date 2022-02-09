@@ -6,7 +6,7 @@ import 'package:network_info_plus/network_info_plus.dart';
 import 'blockchain_server.dart';
 
 class KnownNodes {
-  static List<Node> knownNodes = [];
+  static Set<Node> knownNodes = {};
 
   static Future addNode(String ip, int port, {bool fromServer=false}) async {
     String address = "$ip:$port";

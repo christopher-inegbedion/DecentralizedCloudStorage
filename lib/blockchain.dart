@@ -34,7 +34,7 @@ class BlockChain {
     List<String> fileHashes = [];
 
     for (int i = 0; i < KnownNodes.knownNodes.length; i++) {
-      shardHosts["$i"] = KnownNodes.knownNodes[i].address;
+      shardHosts["$i"] = KnownNodes.knownNodes.toList()[i].address;
     }
 
     int timeCreated = DateTime.now().millisecondsSinceEpoch;

@@ -24,7 +24,7 @@ class BlockchainServer {
   MyHomePageState state;
   BuildContext context;
   NetworkInfo _networkInfo;
-  static int _port;
+  static int _port = Random().nextInt(60000);
   static String ip;
 
   BlockchainServer(this.context, this.state) {
@@ -42,13 +42,13 @@ class BlockchainServer {
   }
 
   static Future<int> getPort() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    _port = prefs.getInt("port");
+    // SharedPreferences prefs = await SharedPreferences.getInstance();
+    // _port = prefs.getInt("port");
 
-    if (_port == null) {
-      _port = Random().nextInt(60000);
-      prefs.setInt("port", _port);
-    }
+    // if (_port == null) {
+    //   _port = Random().nextInt(60000);
+    //   prefs.setInt("port", _port);
+    // }
 
     // return Random().nextInt(60000);
     return _port;
@@ -180,7 +180,8 @@ class BlockchainServer {
     app.post("/send_known_nodes", (Request request) async {
       final parameters = jsonDecode(await request.readAsString());
 
-      int depth = parameters["depth"] - 1;
+      int depth = int.parse(parameters["depth"]) - 1;
+      print(depth);
       List<String> nodes = List<String>.from(parameters["nodes"]);
       String sender = parameters["sender"];
       String origin = parameters["origin"];

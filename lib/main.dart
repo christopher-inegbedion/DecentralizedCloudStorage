@@ -162,9 +162,9 @@ class MyHomePageState extends State<MyHomePage> {
 
     List<String> nodes = [];
     var r = await Dio().post(
-      "http://${KnownNodes.knownNodes[0].address}/send_known_nodes",
+      "http://${KnownNodes.knownNodes.toList()[0].address}/send_known_nodes",
       data: {
-        "depth": depth,
+        "depth": depth.toString(),
         "nodes": [],
         "origin": myAddress,
         "sender": myAddress
@@ -234,7 +234,7 @@ class MyHomePageState extends State<MyHomePage> {
       }
 
       for (int i = 0; i < KnownNodes.knownNodes.length; i++) {
-        Node receivingNode = KnownNodes.knownNodes[i];
+        Node receivingNode = KnownNodes.knownNodes.toList()[i];
         String receivingNodeAddr = receivingNode.address;
 
         sendShard(receivingNodeAddr, fileName, depth, f: partitionFiles[i])
@@ -245,7 +245,7 @@ class MyHomePageState extends State<MyHomePage> {
       }
 
       Block tempBlock = await BlockChain.createNewBlock(
-          bytes, platformFile, result, KnownNodes.knownNodes);
+          bytes, platformFile, result, KnownNodes.knownNodes.toList());
 
       _sendBlocksToKnownNodes(myIP, tempBlock);
     }
@@ -262,7 +262,7 @@ class MyHomePageState extends State<MyHomePage> {
     nodesReceivingShard.add(self);
 
     for (int i = 0; i < KnownNodes.knownNodes.length; i++) {
-      nodesReceivingShard.add(KnownNodes.knownNodes[i]);
+      nodesReceivingShard.add(KnownNodes.knownNodes.toList()[i]);
     }
 
     for (Node node in nodesReceivingShard) {
@@ -674,7 +674,7 @@ class MyHomePageState extends State<MyHomePage> {
                         shrinkWrap: true,
                         itemCount: KnownNodes.knownNodes.length,
                         itemBuilder: (context, index) {
-                          return Text(KnownNodes.knownNodes[index].address);
+                          return Text(KnownNodes.knownNodes.toList()[index].address);
                         }),
                   ),
             actions: <Widget>[
@@ -991,7 +991,7 @@ class MyHomePageState extends State<MyHomePage> {
   }
 
   List<Node> getKnownNodes() {
-    return KnownNodes.knownNodes;
+    return KnownNodes.knownNodes.toList();
   }
 
   @override
