@@ -1035,6 +1035,7 @@ class MyHomePageState extends State<MyHomePage> {
                           "SEARCH", Icons.search, toggleSeachVisibility),
                       createTopNavBarButton("UPLOAD", Icons.upload_file,
                           () async {
+                        print("sd");
                         print(await getKnownNodesForNodes());
 
                         // uploadFile();

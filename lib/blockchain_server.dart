@@ -29,8 +29,7 @@ class BlockchainServer {
 
   BlockchainServer(this.context, this.state) {
     _networkInfo = NetworkInfo();
-          //  _port = Random().nextInt(60000);
-
+    //  _port = Random().nextInt(60000);
   }
 
   static Future<bool> isNodeLive(String addr) async {
@@ -196,6 +195,8 @@ class BlockchainServer {
           nodesSendingTo.add(node);
         }
       }
+
+      print(nodesSendingTo);
       if (nodesSendingTo.isNotEmpty) {
         if (depth != 0) {
           for (var node in nodesSendingTo) {
