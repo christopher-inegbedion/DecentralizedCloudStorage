@@ -17,12 +17,12 @@ class KnownNodes {
       int myPort = await BlockchainServer.getPort();
 
       if (!fromServer) {
-        await Dio().post("http://$address/add_node",
-          data: FormData.fromMap({
-            "addingNodeIp": myIP,
-            "addingNodePort": myPort,
-            "addr": address,
-          }));
+        // await Dio().post("http://$address/add_node",
+        //   data: FormData.fromMap({
+        //     "addingNodeIp": myIP,
+        //     "addingNodePort": myPort,
+        //     "addr": address,
+        //   }));
       }
       
       knownNodes.add(newNode);

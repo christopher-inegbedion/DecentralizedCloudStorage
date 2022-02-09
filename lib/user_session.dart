@@ -8,7 +8,6 @@ import 'package:window_size/window_size.dart';
 import 'constants.dart';
 
 class UserSession {
-
   static Future<bool> isUserNew() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     return prefs.getBool(Constants.newUser) == null;
@@ -45,8 +44,8 @@ class UserSession {
     prefs.setDouble(Constants.tokenAmount, amount);
   }
 
-  Future<double> getSavedTokenAmount(double amount) async {
+  Future<double> getSavedTokenAmount() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    return prefs.getDouble(Constants.tokenAmount);
+    return prefs.getDouble(Constants.tokenAmount) ?? 0;
   }
 }

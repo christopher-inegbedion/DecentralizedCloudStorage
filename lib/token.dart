@@ -22,11 +22,26 @@ class Token {
     return _instance;
   }
 
-  void incrementTokens(int minsElapsed) {
-    availableTokens =
-        (double.parse(_tokenFormula(minsElapsed).toStringAsFixed(3)) -
-                availableTokens) +
-            availableTokens;
+  void clearTokens() {
+    availableTokens = 0;
+    UserSession().saveTokens(availableTokens);
+  }
+
+  void incrementTokens(int minsElapsed) async {
+    double val = (double.parse(_tokenFormula(minsElapsed).toStringAsFixed(3)) -
+            availableTokens) +
+        availableTokens;
+
+    if (val >= await UserSession().getSavedTokenAmount()) {
+      availableTokens =
+          (double.parse(_tokenFormula(minsElapsed).toStringAsFixed(3)) -
+                  availableTokens) +
+              availableTokens;
+    } else {
+      availableTokens = await UserSession().getSavedTokenAmount();
+    }
+
+    UserSession().saveTokens(availableTokens);
   }
 
   Future deductTokens() async {
@@ -37,12 +52,11 @@ class Token {
     Duration diff = currentLoginTime.difference(lastLoginTime);
     int minsElapsed = diff.inMinutes;
 
-    availableTokens =
-        availableTokens - double.parse(_tokenFormula(minsElapsed).toStringAsFixed(3));
+    availableTokens = availableTokens -
+        double.parse(_tokenFormula(minsElapsed).toStringAsFixed(3));
     if (availableTokens < 0) {
       availableTokens = 0;
     }
-    
   }
 
   static double calculateFileCost(int bytes) {

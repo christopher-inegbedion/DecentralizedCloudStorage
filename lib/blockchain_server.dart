@@ -18,6 +18,7 @@ import 'package:testwindowsapp/message_handler.dart';
 import "package:upnp/router.dart" as router;
 import 'package:upnp/upnp.dart' as upnp;
 import 'main.dart';
+import 'node.dart';
 
 class BlockchainServer {
   MyHomePageState state;
@@ -28,6 +29,8 @@ class BlockchainServer {
 
   BlockchainServer(this.context, this.state) {
     _networkInfo = NetworkInfo();
+          //  _port = Random().nextInt(60000);
+
   }
 
   static Future<bool> isNodeLive(String addr) async {
@@ -48,26 +51,13 @@ class BlockchainServer {
       prefs.setInt("port", _port);
     }
 
+    // return Random().nextInt(60000);
     return _port;
   }
 
-  static void _uploadFileToNode(Map args) async {
-    String fileName = args["fileName"];
-    String fileExtension = args["fileExtension"];
-    List<int> fileBytes = args["fileBytes"];
-    String nodeAddr = args["addr"];
-    int index = args["depth"];
+  static void _uploadFileToNode(Map args) async {}
 
-    var formData = dio.FormData.fromMap({
-      "fileName": fileName,
-      "fileExtension": fileExtension,
-      "index": index,
-      "file": dio.MultipartFile.fromBytes(utf8.encode(fileBytes.toString()))
-    });
-
-    await dio.Dio().post("http://$nodeAddr/receive_file", data: formData);
-  }
-
+  ///Write the shard byte data to a file
   static void _writeReceivedFile(Map<String, dynamic> args) async {
     String savePath = args["savePath"];
     List<int> byteData = args["byteData"];
@@ -94,6 +84,8 @@ class BlockchainServer {
       return Response.ok('hello-world');
     });
 
+    ///Called by an external node to add this node as a known node. The external node is also
+    ///added to the this node's known nodes list.
     app.post("/add_node", (Request request) async {
       final parameters = <String, String>{
         await for (final formData in request.multipartFormData)
@@ -107,7 +99,9 @@ class BlockchainServer {
       return Response.ok("done");
     });
 
-    app.post('/upload', (Request request) async {
+    ///Called by an external node to send a shard to this device. This node also sends
+    ///the shard to its known nodes if
+    app.post('/send_shard', (Request request) async {
       final parameters = <String, String>{
         await for (final formData in request.multipartFormData)
           formData.name: await formData.part.readString(),
@@ -115,14 +109,13 @@ class BlockchainServer {
 
       String fileName = parameters["fileName"];
       List<int> byteArray = List.from(json.decode(parameters["file"]));
+
       int depth = int.parse(parameters["depth"]) - 1;
 
       File file =
           await File("$shardDataDirPath/$fileName").create(recursive: true);
       file.writeAsBytes(byteArray).then((File f) async {
-        print(await f.length());
         if (depth != 0) {
-          print("depth $depth");
           state.getKnownNodes().forEach((node) async {
             Map<String, dynamic> formMapData = {
               "depth": depth,
@@ -133,13 +126,10 @@ class BlockchainServer {
 
             dio.FormData formData = dio.FormData.fromMap(formMapData);
             await dio.Dio().post(
-              "http://$node/upload",
+              "http://$node/send_shard",
               data: formData,
             );
-            print('dssone');
           });
-        } else {
-          print("depth done");
         }
       });
 
@@ -148,51 +138,17 @@ class BlockchainServer {
       return Response.ok('hello-world');
     });
 
-    app.post("/download", (Request request) async {
-      final parameters = <String, String>{
-        await for (final formData in request.multipartFormData)
-          formData.name: await formData.part.readString(),
-      };
+    ///Called by an external node to send a shard from this device to it.
+    app.post("/send_file", (Request request) async {
+      final Map<String, dynamic> parameters =
+          jsonDecode(await request.readAsString());
 
-      File requestingFile = File("$shardDataDirPath/${parameters['fileName']}");
-
-      Map args = {
-        "fileName": parameters["fileName"],
-        "fileExtension": parameters["fileExtension"],
-        "fileBytes": await requestingFile.readAsBytes(),
-        "addr": "${parameters["ip"]}:${parameters["port"]}",
-      };
-
-      compute(_uploadFileToNode, args).whenComplete(() {
-        state.toggleDownloadProgressVisibility(int.parse(parameters["index"]));
-
-        MessageHandler.showSuccessMessage(context, "File now available");
-      });
-
-      return Response.ok("done");
-    });
-
-    app.post("/receive_file", (Request request) async {
-      final parameters = <String, String>{
-        await for (final formData in request.multipartFormData)
-          formData.name: await formData.part.readString(),
-      };
-
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      String savePath = prefs.getString("storage_location");
       String fileName = parameters["fileName"];
-      String fileExtension = parameters["fileExtension"];
-      List<int> byteArray = List.from(json.decode(parameters["file"]));
+      File requestingFile = File("$shardDataDirPath/$fileName");
 
-      Map<String, dynamic> args = {
-        "savePath": "$savePath/$fileName.$fileExtension",
-        "byteData": byteArray
-      };
-      compute(_writeReceivedFile, args).whenComplete(() {
-        // state.toggleDownloadProgressVisibility()
-      });
+      List<int> fileBytes = await requestingFile.readAsBytes();
 
-      return Response.ok("done");
+      return Response.ok(fileBytes.toString());
     });
 
     app.post("/send_block", (Request request) async {
@@ -201,10 +157,6 @@ class BlockchainServer {
       Map<String, dynamic> block = parameters;
       Block tempBlock = Block.fromJson(block);
       var blocks = BlockChain.blocks;
-
-      print(blocks
-          .where((Block block) => block.fileName == tempBlock.fileName)
-          .isEmpty);
 
       if (blocks
           .where((Block block) => block.fileName == tempBlock.fileName)
@@ -216,13 +168,53 @@ class BlockchainServer {
         BlockChain.addBlockToTempPool(tempBlock);
 
         if (!BlockChain.updatingBlockchain) {
-          print("blockchain not updating");
           BlockChain.addBlockToBlockchain();
         }
         state.refreshBlockchain();
       }
 
       return Response.ok("done");
+    });
+
+    ///Called by an external node to send the compiled known nodes to the request originator node,
+    ///or send the request to known nodes until the specified depth is 0
+    app.post("/send_known_nodes", (Request request) async {
+      final parameters = jsonDecode(await request.readAsString());
+
+      int depth = parameters["depth"] - 1;
+      List<String> nodes = List<String>.from(parameters["nodes"]);
+      String sender = parameters["sender"];
+      String origin = parameters["origin"];
+
+      String myIP = await NetworkInfo().getWifiIP();
+      int port = await getPort();
+
+      List<Node> nodesSendingTo = [];
+      for (var node in KnownNodes.knownNodes) {
+        if (node.address != sender) {
+          nodes.add(node.address);
+          nodesSendingTo.add(node);
+        }
+      }
+      if (nodesSendingTo.isNotEmpty) {
+        if (depth != 0) {
+          for (var node in nodesSendingTo) {
+            var r = await dio.Dio().post(
+              "http://${node.address}/send_known_nodes",
+              data: {
+                "depth": depth,
+                "nodes": nodes,
+                "origin": origin,
+                "sender": "$myIP:$port"
+              },
+            );
+
+            nodes.addAll(jsonDecode(r.data));
+          }
+        }
+      }
+
+      return Response.ok(nodes);
     });
 
     await io.serve(app, ip, _port, shared: true);

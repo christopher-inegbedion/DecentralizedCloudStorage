@@ -40,6 +40,7 @@ void main() {
   UserSession.lockScreenSize();
   UserSession().getLastLoginTime();
   UserSession().logLoginTime();
+
   _token.deductTokens();
 
   runApp(const MyApp());
@@ -81,24 +82,9 @@ void _sendShardToNode(Map<String, dynamic> args) async {
 
   FormData formData = FormData.fromMap(formMapData);
   var result = await Dio().post(
-    "http://$nodeAddr/upload",
+    "http://$nodeAddr/send_shard",
     data: formData,
   );
-}
-
-Future downloadFileFromNode(Map<String, dynamic> args) async {
-  FormData formData = FormData.fromMap(args["form"]);
-  Map<String, dynamic> shardHosts = args["shardHosts"];
-
-  shardHosts.forEach((key, addr) async {
-    Response response =
-        await Dio().post("http://$addr/download", data: formData);
-    if (response.data == "done") {
-      print("good");
-    }
-  });
-
-  print("done");
 }
 
 class MyApp extends StatelessWidget {
@@ -170,6 +156,24 @@ class MyHomePageState extends State<MyHomePage> {
     });
   }
 
+  Future<String> getKnownNodesForNodes() async {
+    int depth = 2;
+    String myAddress = await Node.getMyAddress();
+
+    List<String> nodes = [];
+    var r = await Dio().post(
+      "http://${KnownNodes.knownNodes[0].address}/send_known_nodes",
+      data: {
+        "depth": depth,
+        "nodes": [],
+        "origin": myAddress,
+        "sender": myAddress
+      },
+    );
+
+    return r.data;
+  }
+
   Future<bool> uploadFile() async {
     if (KnownNodes.knownNodes.isEmpty) {
       MessageHandler.showFailureMessage(context, "You have no known nodes");
@@ -193,8 +197,6 @@ class MyHomePageState extends State<MyHomePage> {
         0,
         (platformFile.path).toString().length -
             result.files.single.name.length);
-    String filePathWithoutFileName =
-        filePath.substring(0, filePath.length - platformFile.name.length);
     String myIP = await NetworkInfo().getWifiIP();
 
     List<List<int>> bytes = [];
@@ -284,24 +286,28 @@ class MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  void downloadFileFromBlockchain(String fileName, int index) async {
+  Future downloadFileFromBlockchain(String fileName, int index) async {
     Map<String, dynamic> blocks = (await getBlockchain())["blocks"];
 
     String fileExtension = blocks[fileName]["fileExtension"];
     Map<String, dynamic> shardHosts = blocks[fileName]["shardHosts"];
 
-    Map<String, dynamic> args = {
-      "shardHosts": shardHosts,
-      "form": {
-        "ip": await NetworkInfo().getWifiIP(),
-        "port": await BlockchainServer.getPort(),
-        "fileName": fileName,
-        "fileExtension": fileExtension,
-        "index": index,
-      }
-    };
-
-    downloadFileFromNode(args);
+    int shardsDownloaded = 0;
+    shardHosts.forEach((key, addr) {
+      Dio().post("http://$addr/send_file", data: {"fileName": fileName}).then(
+          (response) async {
+        List<int> byteArray = List<int>.from(json.decode(response.data));
+        SharedPreferences prefs = await SharedPreferences.getInstance();
+        String savePath = prefs.getString("storage_location");
+        File("$savePath/$fileName.$fileExtension")
+            .writeAsBytes(GZipCodec().decode(byteArray), mode: FileMode.append);
+      }).whenComplete(() {
+        shardsDownloaded += 1;
+        MessageHandler.showSuccessMessage(context,
+            "Shard $shardsDownloaded of ${shardHosts.length} downloaded");
+        toggleDownloadProgressVisibility(index);
+      });
+    });
   }
 
   Future<PlatformFile> _getPlatformFile() async {
@@ -850,6 +856,7 @@ class MyHomePageState extends State<MyHomePage> {
               if (canDownload) {
                 toggleDownloadProgressVisibility(index);
 
+                Future.delayed(const Duration(seconds: 2));
                 downloadFileFromBlockchain(
                     fileNames.keys.elementAt(index), index);
               }
@@ -1026,8 +1033,11 @@ class MyHomePageState extends State<MyHomePage> {
                     children: [
                       createTopNavBarButton(
                           "SEARCH", Icons.search, toggleSeachVisibility),
-                      createTopNavBarButton("UPLOAD", Icons.upload_file, () {
-                        uploadFile();
+                      createTopNavBarButton("UPLOAD", Icons.upload_file,
+                          () async {
+                        print(await getKnownNodesForNodes());
+
+                        // uploadFile();
                       }),
                       createTopNavBarButton("ADD NODE", Icons.person_add,
                           () async {

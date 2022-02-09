@@ -46,7 +46,7 @@ class BlockChain {
       var digest = crypto.sha256.convert(GZipCodec().decode(byteData));
 
       shardByteHashString += digest.toString();
-      fileHashes.add(shardByteHashString);
+      fileHashes.add(digest.toString());
     }
 
     Block newBlock = Block(
