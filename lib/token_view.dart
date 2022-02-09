@@ -20,7 +20,7 @@ class AvailableTokensViewState extends State<AvailableTokensView> {
   void _updateTokens() {
     int minsElapsed = 0;
     if (mounted) {
-      Timer.periodic(const Duration(seconds: 1), (timer) {
+      Timer.periodic(const Duration(minutes: 1), (timer) {
         minsElapsed += 10;
         setState(() {
           token.incrementTokens(minsElapsed);

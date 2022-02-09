@@ -164,7 +164,7 @@ class BlockchainServer {
       };
 
       compute(_uploadFileToNode, args).whenComplete(() {
-        state.hideDownloadProgress(int.parse(parameters["index"]));
+        state.toggleDownloadProgressVisibility(int.parse(parameters["index"]));
 
         MessageHandler.showSuccessMessage(context, "File now available");
       });
@@ -189,7 +189,7 @@ class BlockchainServer {
         "byteData": byteArray
       };
       compute(_writeReceivedFile, args).whenComplete(() {
-        print("file received");
+        // state.toggleDownloadProgressVisibility()
       });
 
       return Response.ok("done");

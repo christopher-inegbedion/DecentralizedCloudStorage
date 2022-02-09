@@ -1,6 +1,9 @@
 import 'dart:math';
 
+import 'package:testwindowsapp/user_session.dart';
+
 class Token {
+  static Token _instance;
   double availableTokens;
   int lastLoginTime;
 
@@ -9,8 +12,14 @@ class Token {
   final int timeToConsumeAvailStorage = 60 * 24;
   final int timeToConsumeShardDataStoredStorage = 60 * 24 * 7;
 
-  Token() {
+  Token._() {
     availableTokens = 0;
+  }
+
+  static Token getInstance() {
+    _instance ??= Token._();
+
+    return _instance;
   }
 
   void incrementTokens(int minsElapsed) {
@@ -20,10 +29,20 @@ class Token {
             availableTokens;
   }
 
-  void deductTokens(int minsElapsed) {
+  Future deductTokens() async {
+    DateTime lastLoginTime = DateTime.fromMillisecondsSinceEpoch(
+        await UserSession().getLastLoginTime());
+    DateTime currentLoginTime = DateTime.now();
+
+    Duration diff = currentLoginTime.difference(lastLoginTime);
+    int minsElapsed = diff.inMinutes;
+
     availableTokens =
-        double.parse(_tokenFormula(minsElapsed).toStringAsFixed(3)) -
-            availableTokens;
+        availableTokens - double.parse(_tokenFormula(minsElapsed).toStringAsFixed(3));
+    if (availableTokens < 0) {
+      availableTokens = 0;
+    }
+    
   }
 
   static double calculateFileCost(int bytes) {

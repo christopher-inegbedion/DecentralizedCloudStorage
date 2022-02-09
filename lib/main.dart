@@ -32,12 +32,15 @@ import 'constants.dart';
 import 'user_session.dart';
 import 'utils.dart';
 
+final Token _token = Token.getInstance();
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
   UserSession.lockScreenSize();
   UserSession().getLastLoginTime();
   UserSession().logLoginTime();
+  _token.deductTokens();
 
   runApp(const MyApp());
 }
@@ -131,7 +134,6 @@ class MyHomePageState extends State<MyHomePage> {
   List<String> searchResults = [];
   BlockchainServer server;
   final trie = Trie();
-  final Token _token = Token();
 
   Widget createTopNavBarButton(String text, IconData btnIcon, Function action) {
     return TextButton(
@@ -156,6 +158,16 @@ class MyHomePageState extends State<MyHomePage> {
             ],
           )),
     );
+  }
+
+  void toggleDownloadProgressVisibility(int index) {
+    setState(() {
+      if (filesDownloading.contains(index)) {
+        filesDownloading.remove(index);
+      } else {
+        filesDownloading.add(index);
+      }
+    });
   }
 
   Future<bool> uploadFile() async {
@@ -836,9 +848,8 @@ class MyHomePageState extends State<MyHomePage> {
                   numberOfShards);
 
               if (canDownload) {
-                setState(() {
-                  filesDownloading.add(index);
-                });
+                toggleDownloadProgressVisibility(index);
+
                 downloadFileFromBlockchain(
                     fileNames.keys.elementAt(index), index);
               }
