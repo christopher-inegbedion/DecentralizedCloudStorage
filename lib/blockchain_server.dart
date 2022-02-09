@@ -204,7 +204,7 @@ class BlockchainServer {
             var r = await dio.Dio().post(
               "http://${node.address}/send_known_nodes",
               data: {
-                "depth": depth,
+                "depth": depth.toString(),
                 "nodes": nodes,
                 "origin": origin,
                 "sender": "$myIP:$port"
