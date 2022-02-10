@@ -25,17 +25,12 @@ class BlockChain {
       List<List<int>> shardByteHash,
       PlatformFile file,
       FilePickerResult result,
-      List<Node> knownNodes) async {
+      Map<String, List> shardHosts) async {
     String fileName = getFileName(file, result);
     String fileExtension = file.extension;
     int fileSizeBytes = file.size;
     double eventCost = Token.calculateFileCost(fileSizeBytes);
-    Map<String, String> shardHosts = {};
     List<String> fileHashes = [];
-
-    for (int i = 0; i < KnownNodes.knownNodes.length; i++) {
-      shardHosts["$i"] = KnownNodes.knownNodes.toList()[i].address;
-    }
 
     int timeCreated = DateTime.now().millisecondsSinceEpoch;
     String fileHost = DomainRegistry.id;
@@ -53,7 +48,7 @@ class BlockChain {
         fileName,
         fileExtension,
         fileSizeBytes,
-        knownNodes.length,
+        shardHosts.length,
         eventCost,
         shardHosts,
         timeCreated,
@@ -170,7 +165,7 @@ class Block {
   int shardsCreated;
   //BlockEvent event;
   double eventCost;
-  Map<String, String> shardHosts;
+  Map<String, List> shardHosts;
   int timeCreated;
   String fileHost;
   List<String> fileHashes = [];
@@ -219,7 +214,7 @@ class Block {
     fileSizeBytes = blockData["fileSizeBytes"];
     shardsCreated = blockData["shardsCreated"];
     eventCost = blockData["eventCost"];
-    shardHosts = Map<String, String>.from(blockData["shardHosts"]);
+    shardHosts = Map<String, List>.from(blockData["shardHosts"]);
     timeCreated = blockData["timeCreated"];
     fileHost = blockData["fileHost"];
     fileHashes = List<String>.from(blockData["fileHashes"]);

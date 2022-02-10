@@ -156,22 +156,26 @@ class MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  Future<String> getKnownNodesForNodes() async {
+  Future<Map<String, Set>> getKnownNodesForNodes() async {
     int depth = 2;
     String myAddress = await Node.getMyAddress();
+    Map<String, Set> backupNodes = {};
 
-    List<String> nodes = [];
-    var r = await Dio().post(
-      "http://${KnownNodes.knownNodes.toList()[0].address}/send_known_nodes",
-      data: {
-        "depth": depth.toString(),
-        "nodes": [],
-        "origin": myAddress,
-        "sender": myAddress
-      },
-    );
+    for (int i = 0; i < KnownNodes.knownNodes.length; i++) {
+      var r = await Dio().post(
+        "http://${KnownNodes.knownNodes.toList()[0].address}/send_known_nodes",
+        data: {
+          "depth": depth.toString(),
+          "nodes": [],
+          "origin": myAddress,
+          "sender": myAddress
+        },
+      );
 
-    return r.data;
+      backupNodes[i.toString()] = {...jsonDecode(r.data)};
+    }
+
+    return backupNodes;
   }
 
   Future<bool> uploadFile() async {
@@ -233,19 +237,33 @@ class MyHomePageState extends State<MyHomePage> {
         pd.close();
       }
 
-      for (int i = 0; i < KnownNodes.knownNodes.length; i++) {
-        Node receivingNode = KnownNodes.knownNodes.toList()[i];
-        String receivingNodeAddr = receivingNode.address;
-
-        sendShard(receivingNodeAddr, fileName, depth, f: partitionFiles[i])
-            .catchError((e, st) {
-          MessageHandler.showFailureMessage(context, e.toString());
-          return;
-        });
+      //Create list of nodes each shard can be sent to (known nodes + backup nodes)
+      Map<String, Set> nodesReceiving = await getKnownNodesForNodes();
+      for (int i = 0; i < partitions; i++) {
+        nodesReceiving[i.toString()]
+            .add(KnownNodes.knownNodes.toList()[i].address);
       }
 
-      Block tempBlock = await BlockChain.createNewBlock(
-          bytes, platformFile, result, KnownNodes.knownNodes.toList());
+      for (int i = 0; i < partitions; i++) {
+        for (String receivingNodeAddr in nodesReceiving[i.toString()]) {
+          sendShard(receivingNodeAddr, "$fileName-$i", depth,
+                  f: partitionFiles[i])
+              .catchError((e, st) {
+            MessageHandler.showFailureMessage(context, e.toString());
+            return;
+          });
+        }
+      }
+
+      List temp = [];
+      Map<String, List> newList = {};
+      nodesReceiving.forEach((key, value) {
+        temp.add(nodesReceiving[key]);
+        newList[key] = value.toList();
+      });
+
+      Block tempBlock =
+          await BlockChain.createNewBlock(bytes, platformFile, result, newList);
 
       _sendBlocksToKnownNodes(myIP, tempBlock);
     }
@@ -290,23 +308,35 @@ class MyHomePageState extends State<MyHomePage> {
     Map<String, dynamic> blocks = (await getBlockchain())["blocks"];
 
     String fileExtension = blocks[fileName]["fileExtension"];
-    Map<String, dynamic> shardHosts = blocks[fileName]["shardHosts"];
+    var shardHosts = blocks[fileName]["shardHosts"];
 
     int shardsDownloaded = 0;
-    shardHosts.forEach((key, addr) {
-      Dio().post("http://$addr/send_file", data: {"fileName": fileName}).then(
-          (response) async {
-        List<int> byteArray = List<int>.from(json.decode(response.data));
-        SharedPreferences prefs = await SharedPreferences.getInstance();
-        String savePath = prefs.getString("storage_location");
-        File("$savePath/$fileName.$fileExtension")
-            .writeAsBytes(GZipCodec().decode(byteArray), mode: FileMode.append);
-      }).whenComplete(() {
-        shardsDownloaded += 1;
-        MessageHandler.showSuccessMessage(context,
-            "Shard $shardsDownloaded of ${shardHosts.length} downloaded");
-        toggleDownloadProgressVisibility(index);
-      });
+    shardHosts.forEach((key, possibleNodes) {
+      for (String nodeAddr in possibleNodes) {
+        bool error = false;
+        
+        Dio().post("http://$nodeAddr/send_file",
+            data: {"fileName": "$fileName-$key"}).then((response) async {
+          List<int> byteArray = List<int>.from(json.decode(response.data));
+          SharedPreferences prefs = await SharedPreferences.getInstance();
+          String savePath = prefs.getString("storage_location");
+          File("$savePath/$fileName.$fileExtension").writeAsBytes(
+              GZipCodec().decode(byteArray),
+              mode: FileMode.append);
+        }).whenComplete(() {
+          shardsDownloaded += 1;
+          MessageHandler.showSuccessMessage(context,
+              "Shard $shardsDownloaded of ${shardHosts.length} downloaded");
+          toggleDownloadProgressVisibility(index);
+        }).onError((error, stackTrace) {
+          print(stackTrace);
+          error = true;
+        });
+
+        if (!error) {
+          break;
+        }
+      }
     });
   }
 
@@ -674,7 +704,8 @@ class MyHomePageState extends State<MyHomePage> {
                         shrinkWrap: true,
                         itemCount: KnownNodes.knownNodes.length,
                         itemBuilder: (context, index) {
-                          return Text(KnownNodes.knownNodes.toList()[index].address);
+                          return Text(
+                              KnownNodes.knownNodes.toList()[index].address);
                         }),
                   ),
             actions: <Widget>[
@@ -773,8 +804,11 @@ class MyHomePageState extends State<MyHomePage> {
                 Row(
                   children: [
                     const Text("Shard hosts: "),
-                    SelectableText(fileData["shardHosts"].toString(),
-                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                    Flexible(
+                      child: SelectableText(fileData["shardHosts"].toString(),
+                          style:
+                              TextStyle(fontSize: 14, color: Colors.grey[600])),
+                    )
                   ],
                 ),
                 Row(
@@ -1035,10 +1069,10 @@ class MyHomePageState extends State<MyHomePage> {
                           "SEARCH", Icons.search, toggleSeachVisibility),
                       createTopNavBarButton("UPLOAD", Icons.upload_file,
                           () async {
-                        print("sd");
-                        print(await getKnownNodesForNodes());
+                        // print("sd");
+                        // print(await getKnownNodesForNodes());
 
-                        // uploadFile();
+                        uploadFile();
                       }),
                       createTopNavBarButton("ADD NODE", Icons.person_add,
                           () async {

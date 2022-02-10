@@ -182,7 +182,7 @@ class BlockchainServer {
 
       int depth = int.parse(parameters["depth"]) - 1;
       print(depth);
-      List<String> nodes = List<String>.from(parameters["nodes"]);
+      Set<String> nodes = {...parameters["nodes"]};
       String sender = parameters["sender"];
       String origin = parameters["origin"];
 
@@ -197,7 +197,6 @@ class BlockchainServer {
         }
       }
 
-      print(nodesSendingTo);
       if (nodesSendingTo.isNotEmpty) {
         if (depth != 0) {
           for (var node in nodesSendingTo) {
@@ -205,18 +204,19 @@ class BlockchainServer {
               "http://${node.address}/send_known_nodes",
               data: {
                 "depth": depth.toString(),
-                "nodes": nodes,
+                "nodes": nodes.toList(),
                 "origin": origin,
                 "sender": "$myIP:$port"
               },
             );
 
-            nodes.addAll(jsonDecode(r.data));
+            print(Set<String>.from(jsonDecode(r.data)));
+            nodes.addAll(Set<String>.from(jsonDecode(r.data)));
           }
         }
       }
 
-      return Response.ok(nodes);
+      return Response.ok(jsonEncode(nodes.toList()));
     });
 
     await io.serve(app, ip, _port, shared: true);
