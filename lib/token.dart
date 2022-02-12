@@ -64,8 +64,8 @@ class Token {
   }
 
   double _tokenFormula(int minsElapsed) {
-    double a = 10 - (timeToConsumeAvailStorage / 2);
-    double b = 10 - (timeToConsumeShardDataStoredStorage / 2);
+    double a = 50 - (timeToConsumeAvailStorage / 2);
+    double b = 50 - (timeToConsumeShardDataStoredStorage / 2);
     double j = -((log((m / 1) - 1)) / a);
     double k = -((log((n / 1) - 1)) / b);
 

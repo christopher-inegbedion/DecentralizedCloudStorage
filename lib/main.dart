@@ -304,40 +304,65 @@ class MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  Future downloadFileFromBlockchain(String fileName, int index) async {
-    Map<String, dynamic> blocks = (await getBlockchain())["blocks"];
+  bool verifyFileShard(List<String> fileHashes, List<int> byteData) {
+    try {
+      String hashByteData = createFileHash(byteData);
 
-    String fileExtension = blocks[fileName]["fileExtension"];
-    var shardHosts = blocks[fileName]["shardHosts"];
+      return fileHashes.contains(hashByteData);
+    } catch (e, trace) {
+      return false;
+    }
+  }
+
+  Future downloadFileFromBlockchain(String fileName, int index) async {
+    Block block = Block.fromJson((await getBlockchain())["blocks"][fileName]);
+
+    String fileExtension = block.fileExtension;
+    var shardHosts = block.shardHosts;
+    List<String> fileHashes = block.fileHashes;
 
     int shardsDownloaded = 0;
+    bool badShard = false;
     shardHosts.forEach((key, possibleNodes) {
+      if (badShard) {
+        return;
+      }
+
       for (String nodeAddr in possibleNodes) {
         bool error = false;
-        
+
         Dio().post("http://$nodeAddr/send_file",
             data: {"fileName": "$fileName-$key"}).then((response) async {
           List<int> byteArray = List<int>.from(json.decode(response.data));
           SharedPreferences prefs = await SharedPreferences.getInstance();
-          String savePath = prefs.getString("storage_location");
-          File("$savePath/$fileName.$fileExtension").writeAsBytes(
-              GZipCodec().decode(byteArray),
-              mode: FileMode.append);
-        }).whenComplete(() {
-          shardsDownloaded += 1;
-          MessageHandler.showSuccessMessage(context,
-              "Shard $shardsDownloaded of ${shardHosts.length} downloaded");
-          toggleDownloadProgressVisibility(index);
+
+          if (verifyFileShard(fileHashes, byteArray)) {
+            String savePath = prefs.getString("storage_location");
+            File("$savePath/$fileName.$fileExtension")
+                .writeAsBytes(GZipCodec().decode(byteArray),
+                    mode: FileMode.append)
+                .whenComplete(() {
+              shardsDownloaded += 1;
+              MessageHandler.showSuccessMessage(context,
+                  "Shard $shardsDownloaded of ${shardHosts.length} downloaded");
+            });
+          } else {
+            MessageHandler.showFailureMessage(
+                context, "Bad shard $fileName-$key from $nodeAddr ");
+            error = true;
+            badShard = true;
+            print(badShard);
+          }
         }).onError((error, stackTrace) {
-          print(stackTrace);
           error = true;
         });
 
         if (!error) {
-          break;
+          return;
         }
       }
     });
+    toggleDownloadProgressVisibility(index);
   }
 
   Future<PlatformFile> _getPlatformFile() async {

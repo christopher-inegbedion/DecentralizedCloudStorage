@@ -24,7 +24,7 @@ class BlockchainServer {
   MyHomePageState state;
   BuildContext context;
   NetworkInfo _networkInfo;
-  static int _port = Random().nextInt(60000);
+  static int _port;
   static String ip;
 
   BlockchainServer(this.context, this.state) {
@@ -42,15 +42,14 @@ class BlockchainServer {
   }
 
   static Future<int> getPort() async {
-    // SharedPreferences prefs = await SharedPreferences.getInstance();
-    // _port = prefs.getInt("port");
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    _port = prefs.getInt("port");
 
-    // if (_port == null) {
-    //   _port = Random().nextInt(60000);
-    //   prefs.setInt("port", _port);
-    // }
+    if (_port == null) {
+      _port = Random().nextInt(60000);
+      prefs.setInt("port", _port);
+    }
 
-    // return Random().nextInt(60000);
     return _port;
   }
 
@@ -125,7 +124,7 @@ class BlockchainServer {
 
             dio.FormData formData = dio.FormData.fromMap(formMapData);
             await dio.Dio().post(
-              "http://$node/send_shard",
+              "http://${node.address}/send_shard",
               data: formData,
             );
           });

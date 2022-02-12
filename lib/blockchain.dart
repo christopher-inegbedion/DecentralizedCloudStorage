@@ -12,7 +12,7 @@ import 'package:testwindowsapp/node.dart';
 import 'package:testwindowsapp/token.dart';
 import 'package:http/http.dart' as http;
 
-import 'known_nodes.dart';
+import 'utils.dart';
 
 class BlockChain {
   BlockChain._();
@@ -38,10 +38,10 @@ class BlockChain {
     String shardByteHashString = "";
 
     for (List<int> byteData in shardByteHash) {
-      var digest = crypto.sha256.convert(GZipCodec().decode(byteData));
+      String hashByteData = createFileHash(byteData);
 
-      shardByteHashString += digest.toString();
-      fileHashes.add(digest.toString());
+      shardByteHashString += hashByteData;
+      fileHashes.add(hashByteData);
     }
 
     Block newBlock = Block(
