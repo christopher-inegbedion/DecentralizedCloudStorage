@@ -5,7 +5,7 @@ import 'package:network_info_plus/network_info_plus.dart';
 import 'package:testwindowsapp/blockchain_server.dart';
 
 class DomainRegistry {
-  static String id;
+  static String _id;
 
   DomainRegistry._();
 
@@ -14,6 +14,10 @@ class DomainRegistry {
         "${await NetworkInfo().getWifiIP()}${await BlockchainServer.getPort()}");
     Digest digest = sha256.convert(bytes);
 
-    id = digest.toString();
+    _id = digest.toString();
+  }
+
+  static String getID() {
+    return _id;
   }
 }

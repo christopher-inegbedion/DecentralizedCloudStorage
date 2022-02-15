@@ -33,7 +33,7 @@ class BlockChain {
     List<String> fileHashes = [];
 
     int timeCreated = DateTime.now().millisecondsSinceEpoch;
-    String fileHost = DomainRegistry.id;
+    String fileHost = DomainRegistry.getID();
     String merkleHashSalt = Block.getRandString();
     String shardByteHashString = "";
 
@@ -49,6 +49,7 @@ class BlockChain {
         fileExtension,
         fileSizeBytes,
         shardHosts.length,
+        Block.uploadEvent,
         eventCost,
         shardHosts,
         timeCreated,
@@ -60,6 +61,8 @@ class BlockChain {
 
     return newBlock;
   }
+
+  // static Future<Block> create
 
   static void sendBlockchain(String receipientAddr, Block newBlock) async {
     await http.post(Uri.parse("http://$receipientAddr/send_block"),
@@ -159,11 +162,14 @@ class BlockChain {
 }
 
 class Block {
+  static const  String deleteEvent = "delete";
+  static const String uploadEvent = "upload";
+
   String fileName;
   String fileExtension;
   int fileSizeBytes;
   int shardsCreated;
-  //BlockEvent event;
+  String event;
   double eventCost;
   Map<String, List> shardHosts;
   int timeCreated;
@@ -182,6 +188,7 @@ class Block {
       this.fileExtension,
       this.fileSizeBytes,
       this.shardsCreated,
+      this.event,
       this.eventCost,
       this.shardHosts,
       this.timeCreated,

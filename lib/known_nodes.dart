@@ -6,11 +6,16 @@ import 'package:network_info_plus/network_info_plus.dart';
 import 'blockchain_server.dart';
 
 class KnownNodes {
+  static const int maximumKnownNodesAllowed = 10;
   static Set<Node> knownNodes = {};
 
   static Future addNode(String ip, int port, {bool fromServer=false}) async {
     String address = "$ip:$port";
     Node newNode = Node(ip, port);
+
+    if (knownNodes.length == maximumKnownNodesAllowed) {
+      throw Exception("Maximum known nodes capacity reached");
+    }
 
     try {
       String myIP = await NetworkInfo().getWifiIP();

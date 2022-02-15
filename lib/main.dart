@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:isolate';
+import 'dart:math';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -120,6 +121,9 @@ class MyHomePageState extends State<MyHomePage> {
   List<String> searchResults = [];
   BlockchainServer server;
   final trie = Trie();
+  int depth = 2;
+
+  void updateBlockchain() {}
 
   Widget createTopNavBarButton(String text, IconData btnIcon, Function action) {
     return TextButton(
@@ -156,14 +160,14 @@ class MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  Future<Map<String, Set>> getKnownNodesForNodes() async {
-    int depth = 2;
+  Future<Map<String, Set>> getKnownNodesForNodes(
+      List<Node> nodesReceiving) async {
     String myAddress = await Node.getMyAddress();
     Map<String, Set> backupNodes = {};
 
-    for (int i = 0; i < KnownNodes.knownNodes.length; i++) {
+    for (int i = 0; i < nodesReceiving.length; i++) {
       var r = await Dio().post(
-        "http://${KnownNodes.knownNodes.toList()[0].address}/send_known_nodes",
+        "http://${nodesReceiving[0].getNodeAddress()}/send_known_nodes",
         data: {
           "depth": depth.toString(),
           "nodes": [],
@@ -173,9 +177,34 @@ class MyHomePageState extends State<MyHomePage> {
       );
 
       backupNodes[i.toString()] = {...jsonDecode(r.data)};
+      backupNodes[i.toString()].add(KnownNodes.knownNodes.toList()[i].getNodeAddress());
     }
 
     return backupNodes;
+  }
+
+  List<Node> getNodesReceivingShard(int n) {
+    Set<Node> tempList = KnownNodes.knownNodes;
+    List<Node> selectedNodes = [];
+
+    for (int i = 0; i < n; i++) {
+      Node selected = tempList.elementAt(Random().nextInt(tempList.length));
+      selectedNodes.add(selected);
+      tempList.remove(selected);
+    }
+
+    return selectedNodes;
+  }
+
+  int _getNumberOfPartitionsForFile(int fileSizeBytes) {
+    double fileSizeMBytes = fileSizeBytes / (1024 * 1024);
+    if (fileSizeMBytes <= 200) {
+      return 1;
+    } else if (fileSizeMBytes > 1800) {
+      return KnownNodes.maximumKnownNodesAllowed;
+    } else {
+      return (fileSizeMBytes / 200).floor();
+    }
   }
 
   Future<bool> uploadFile() async {
@@ -184,6 +213,7 @@ class MyHomePageState extends State<MyHomePage> {
       return false;
     }
 
+    //select file
     FilePickerResult result = await FilePicker.platform.pickFiles();
     PlatformFile platformFile = result.files.single;
     File file = File((platformFile.path).toString());
@@ -192,7 +222,8 @@ class MyHomePageState extends State<MyHomePage> {
     final readFile = await File(file.path).open();
     int fileSizeBytes = await readFile.length();
 
-    int partitions = KnownNodes.knownNodes.length;
+    //calcualte how many partitions are required
+    int partitions = _getNumberOfPartitionsForFile(fileSizeBytes);
 
     String fileExtension = platformFile.extension;
     String fileName = platformFile.name
@@ -211,6 +242,7 @@ class MyHomePageState extends State<MyHomePage> {
         Token.calculateFileCost(fileSizeBytes), fileSizeBytes, partitions);
     List<int> fileBytes = await File(file.path).readAsBytes();
 
+    //verify that user can upload file
     if (canUpload) {
       ProgressDialog pd = ProgressDialog(context: context);
 
@@ -227,6 +259,8 @@ class MyHomePageState extends State<MyHomePage> {
           "chunkSize": chunkSize,
           "fileBytes": fileBytes
         };
+
+        //create file partitions
         List<int> encodedFile = await compute(_partitionFile, args);
         byteLastLocation += chunkSize;
         File newFile = await File("$filePath$i").create();
@@ -237,13 +271,15 @@ class MyHomePageState extends State<MyHomePage> {
         pd.close();
       }
 
-      //Create list of nodes each shard can be sent to (known nodes + backup nodes)
-      Map<String, Set> nodesReceiving = await getKnownNodesForNodes();
-      for (int i = 0; i < partitions; i++) {
-        nodesReceiving[i.toString()]
-            .add(KnownNodes.knownNodes.toList()[i].address);
-      }
+      //Create list of nodes each shard can be sent to 
+      Map<String, Set> nodesReceiving =
+          await getKnownNodesForNodes(getNodesReceivingShard(partitions));
+      // for (int i = 0; i < partitions; i++) {
+      //   nodesReceiving[i.toString()]
+      //       .add(KnownNodes.knownNodes.toList()[i].address);
+      // }
 
+      //send shard byte data to selected known nodes
       for (int i = 0; i < partitions; i++) {
         for (String receivingNodeAddr in nodesReceiving[i.toString()]) {
           sendShard(receivingNodeAddr, "$fileName-$i", depth,
@@ -255,16 +291,15 @@ class MyHomePageState extends State<MyHomePage> {
         }
       }
 
-      List temp = [];
       Map<String, List> newList = {};
       nodesReceiving.forEach((key, value) {
-        temp.add(nodesReceiving[key]);
         newList[key] = value.toList();
       });
 
       Block tempBlock =
           await BlockChain.createNewBlock(bytes, platformFile, result, newList);
 
+      //send the block to all known nodes
       _sendBlocksToKnownNodes(myIP, tempBlock);
     }
 
@@ -284,7 +319,7 @@ class MyHomePageState extends State<MyHomePage> {
     }
 
     for (Node node in nodesReceivingShard) {
-      BlockChain.sendBlockchain(node.address, tempBlock);
+      BlockChain.sendBlockchain(node.getNodeAddress(), tempBlock);
     }
   }
 
@@ -730,7 +765,7 @@ class MyHomePageState extends State<MyHomePage> {
                         itemCount: KnownNodes.knownNodes.length,
                         itemBuilder: (context, index) {
                           return Text(
-                              KnownNodes.knownNodes.toList()[index].address);
+                              KnownNodes.knownNodes.toList()[index].getNodeAddress());
                         }),
                   ),
             actions: <Widget>[
@@ -913,8 +948,6 @@ class MyHomePageState extends State<MyHomePage> {
                   numberOfShards);
 
               if (canDownload) {
-                toggleDownloadProgressVisibility(index);
-
                 Future.delayed(const Duration(seconds: 2));
                 downloadFileFromBlockchain(
                     fileNames.keys.elementAt(index), index);
@@ -1300,7 +1333,7 @@ class MyHomePageState extends State<MyHomePage> {
                         builder: (context, snapshot) {
                           if (snapshot.hasData) {
                             return SelectableText(
-                              "User ID: ${DomainRegistry.id}",
+                              "User ID: ${DomainRegistry.getID()}",
                               style: TextStyle(
                                   fontSize: 12, color: Colors.grey[700]),
                             );

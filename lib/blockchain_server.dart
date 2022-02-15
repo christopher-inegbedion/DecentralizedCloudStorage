@@ -24,8 +24,6 @@ class BlockchainServer {
   MyHomePageState state;
   BuildContext context;
   NetworkInfo _networkInfo;
-  static int _port;
-  static String ip;
 
   BlockchainServer(this.context, this.state) {
     _networkInfo = NetworkInfo();
@@ -43,34 +41,25 @@ class BlockchainServer {
 
   static Future<int> getPort() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    _port = prefs.getInt("port");
+    int port = prefs.getInt("port");
 
-    if (_port == null) {
-      _port = Random().nextInt(60000);
-      prefs.setInt("port", _port);
+    if (port == null) {
+      port = Random().nextInt(60000);
+      prefs.setInt("port", port);
     }
 
-    return _port;
+    return port;
   }
 
-  static void _uploadFileToNode(Map args) async {}
-
-  ///Write the shard byte data to a file
-  static void _writeReceivedFile(Map<String, dynamic> args) async {
-    String savePath = args["savePath"];
-    List<int> byteData = args["byteData"];
-
-    await File(savePath)
-        .writeAsBytes(GZipCodec().decode(byteData), mode: FileMode.append);
+  static Future<String> getIP() async {
+    return await NetworkInfo().getWifiIP();
   }
 
   static void startServer(BuildContext context, MyHomePageState state) async {
     var app = shelf_router.Router();
-    ip = await NetworkInfo().getWifiIP();
-    _port = await getPort();
 
-    if (ip == null || _port == null) {
-      state.showServerStartErrorDialog(ip, _port);
+    if (await getIP() == null || await getPort() == null) {
+      state.showServerStartErrorDialog(await getIP(), await getPort());
       throw Exception("An error occured starting the server");
     }
     SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -124,7 +113,7 @@ class BlockchainServer {
 
             dio.FormData formData = dio.FormData.fromMap(formMapData);
             await dio.Dio().post(
-              "http://${node.address}/send_shard",
+              "http://${node.getNodeAddress()}/send_shard",
               data: formData,
             );
           });
@@ -160,7 +149,7 @@ class BlockchainServer {
           .where((Block block) => block.fileName == tempBlock.fileName)
           .isEmpty) {
         state.getKnownNodes().forEach((node) {
-          BlockChain.sendBlockchain(node.address, tempBlock);
+          BlockChain.sendBlockchain(node.getNodeAddress(), tempBlock);
         });
 
         BlockChain.addBlockToTempPool(tempBlock);
@@ -190,8 +179,8 @@ class BlockchainServer {
 
       List<Node> nodesSendingTo = [];
       for (var node in KnownNodes.knownNodes) {
-        if (node.address != sender) {
-          nodes.add(node.address);
+        if (node.getNodeAddress() != sender) {
+          nodes.add(node.getNodeAddress());
           nodesSendingTo.add(node);
         }
       }
@@ -200,7 +189,7 @@ class BlockchainServer {
         if (depth != 0) {
           for (var node in nodesSendingTo) {
             var r = await dio.Dio().post(
-              "http://${node.address}/send_known_nodes",
+              "http://${node.getNodeAddress()}/send_known_nodes",
               data: {
                 "depth": depth.toString(),
                 "nodes": nodes.toList(),
@@ -218,7 +207,7 @@ class BlockchainServer {
       return Response.ok(jsonEncode(nodes.toList()));
     });
 
-    await io.serve(app, ip, _port, shared: true);
+    await io.serve(app, await getIP(), await getPort(), shared: true);
     MessageHandler.showSuccessMessage(context, "Server started");
     // mapPort();
   }
@@ -239,9 +228,9 @@ class BlockchainServer {
       if (service != null) {
         service.invokeAction("AddPortMapping", {
           "NewRemoteHost": "",
-          "NewExternalPort": _port,
+          "NewExternalPort": await getPort(),
           "NewProtocol": 'TCP',
-          "NewInternalPort": _port,
+          "NewInternalPort": await getPort(),
           "NewInternalClient": await _networkInfo.getWifiIP(),
           "NewEnabled": '1',
           "NewPortMappingDescription": 'Shr application server',
