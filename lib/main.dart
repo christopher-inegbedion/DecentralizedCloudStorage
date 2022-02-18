@@ -121,27 +121,30 @@ class MyHomePageState extends State<MyHomePage> {
   void updateBlockchain() {}
 
   Widget createTopNavBarButton(String text, IconData btnIcon, Function action) {
-    return TextButton(
-      onPressed: () {
-        action();
-      },
-      child: Container(
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(5)),
-          padding: const EdgeInsets.only(left: 5, right: 5, top: 3, bottom: 3),
-          child: Row(
-            children: [
-              Icon(
-                btnIcon,
-                size: 13,
-              ),
-              Container(
-                  margin: const EdgeInsets.only(left: 5),
-                  child: Text(
-                    text,
-                    style: const TextStyle(fontSize: 12),
-                  )),
-            ],
-          )),
+    return Container(
+      child: TextButton(
+        onPressed: () {
+          action();
+        },
+        child: Container(
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(5)),
+            padding:
+                const EdgeInsets.only(left: 5, right: 5, top: 3, bottom: 3),
+            child: Row(
+              children: [
+                Icon(
+                  btnIcon,
+                  size: 13,
+                ),
+                Container(
+                    margin: const EdgeInsets.only(left: 5),
+                    child: Text(
+                      text,
+                      style: const TextStyle(fontSize: 12),
+                    )),
+              ],
+            )),
+      ),
     );
   }
 
@@ -804,12 +807,12 @@ class MyHomePageState extends State<MyHomePage> {
           return AlertDialog(
             scrollable: true,
             content: SelectableText(prettyJson(blockchain, indent: 2),
-                style: TextStyle(fontSize: 12)),
+                style: const TextStyle(fontSize: 12)),
             actions: <Widget>[
               FlatButton(
                 color: Colors.green,
                 textColor: Colors.white,
-                child: Text('OK'),
+                child: const Text('OK'),
                 onPressed: () {
                   Navigator.pop(context);
                 },
@@ -829,13 +832,14 @@ class MyHomePageState extends State<MyHomePage> {
               'File details',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
+            scrollable: true,
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 // Text(fileData.toString()),
                 Row(
                   children: [
-                    const Text("Block hash: "),
+                    const Flexible(child: Text("Block hash: ")),
                     Flexible(
                         child: SelectableText(
                       fileData["merkleRootHash"],
@@ -845,8 +849,10 @@ class MyHomePageState extends State<MyHomePage> {
                 ),
                 Row(
                   children: [
-                    Text("Previous block hash: ",
-                        style: TextStyle(color: Colors.grey[800])),
+                    Flexible(
+                      child: Text("Previous block hash: ",
+                          style: TextStyle(color: Colors.grey[800])),
+                    ),
                     Flexible(
                       child: SelectableText(fileData["prevBlockHash"],
                           style:
@@ -857,54 +863,76 @@ class MyHomePageState extends State<MyHomePage> {
                 Row(
                   children: [
                     const Text("Time created: "),
-                    SelectableText(
-                        convertTimestampToDate(fileData["timeCreated"]),
-                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                    Flexible(
+                      child: SelectableText(
+                          convertTimestampToDate(fileData["timeCreated"]),
+                          style:
+                              TextStyle(fontSize: 14, color: Colors.grey[600])),
+                    )
                   ],
                 ),
                 Row(
                   children: [
-                    const Text("File name: "),
-                    SelectableText(fileData["fileName"],
-                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                    const Flexible(child: Text("File name: ")),
+                    Flexible(
+                      child: SelectableText(fileData["fileName"],
+                          style:
+                              TextStyle(fontSize: 14, color: Colors.grey[600])),
+                    )
                   ],
                 ),
                 Row(
                   children: [
-                    const Text("File extension: "),
-                    SelectableText(fileData["fileExtension"],
-                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                    const Flexible(child: Text("File extension: ")),
+                    Flexible(
+                      child: SelectableText(fileData["fileExtension"],
+                          style:
+                              TextStyle(fontSize: 14, color: Colors.grey[600])),
+                    )
                   ],
                 ),
                 Row(
                   children: [
-                    const Text("File size, in bytes: "),
-                    SelectableText(fileData["fileSizeBytes"].toString(),
-                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                    const Flexible(child: Text("File size, in bytes: ")),
+                    Flexible(
+                      child: SelectableText(
+                          fileData["fileSizeBytes"].toString(),
+                          style:
+                              TextStyle(fontSize: 14, color: Colors.grey[600])),
+                    )
                   ],
                 ),
                 Row(
                   children: [
                     const Text("Shards created: "),
-                    SelectableText(fileData["shardsCreated"].toString(),
-                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                    Flexible(
+                      child: SelectableText(
+                          fileData["shardsCreated"].toString(),
+                          style:
+                              TextStyle(fontSize: 14, color: Colors.grey[600])),
+                    )
                   ],
                 ),
                 Row(
                   children: [
                     const Text("Event cost: "),
-                    SelectableText(
-                        "${fileData["eventCost"].toString()} token(s)",
-                        style: TextStyle(fontSize: 14, color: Colors.grey[600]))
+                    Flexible(
+                      child: SelectableText(
+                          "${fileData["eventCost"].toString()} token(s)",
+                          style:
+                              TextStyle(fontSize: 14, color: Colors.grey[600])),
+                    )
                   ],
                 ),
                 Row(
                   children: [
                     const Text("Shard hosts: "),
                     Flexible(
-                      child: SelectableText(fileData["shardHosts"].toString(),
-                          style:
-                              TextStyle(fontSize: 14, color: Colors.grey[600])),
+                      child: Flexible(
+                        child: SelectableText(fileData["shardHosts"].toString(),
+                            style: TextStyle(
+                                fontSize: 14, color: Colors.grey[600])),
+                      ),
                     )
                   ],
                 ),
@@ -959,7 +987,7 @@ class MyHomePageState extends State<MyHomePage> {
     }
 
     return ListView.builder(
-        physics: BouncingScrollPhysics(),
+        physics: const BouncingScrollPhysics(),
         shrinkWrap: true,
         itemCount: fileHashes.length,
         itemBuilder: (context, index) {
@@ -986,12 +1014,14 @@ class MyHomePageState extends State<MyHomePage> {
             },
             child: Column(
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
+                Wrap(
+                  // crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Container(
                         alignment: Alignment.center,
-                        padding: const EdgeInsets.only(top: 10, bottom: 10),
+                        padding: const EdgeInsets.only(
+                          top: 10,
+                        ),
                         margin: const EdgeInsets.only(left: 20),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1042,9 +1072,12 @@ class MyHomePageState extends State<MyHomePage> {
                                         fontSize: 11, color: Colors.grey),
                                   ),
                                 ),
+                              ],
+                            ),
+                            Row(
+                              children: [
                                 Container(
-                                  margin:
-                                      const EdgeInsets.only(left: 10, right: 1),
+                                  margin: const EdgeInsets.only(right: 1),
                                   child: const Icon(Icons.sd_card_outlined,
                                       color: Colors.grey, size: 12),
                                 ),
@@ -1058,51 +1091,48 @@ class MyHomePageState extends State<MyHomePage> {
                                   ),
                                 ),
                               ],
-                            ),
+                            )
                           ],
                         )),
-                    Expanded(
-                      child: Container(
-                        margin: const EdgeInsets.only(right: 20),
-                        alignment: Alignment.centerRight,
-                        // color: Colors.red,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            IconButton(
+                    Container(
+                      margin: const EdgeInsets.only(right: 20),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          IconButton(
+                            splashRadius: 10,
+                            icon: const Icon(
+                              Icons.description_outlined,
+                              size: 12,
+                            ),
+                            onPressed: () {
+                              String fileHash =
+                                  fileHashes.keys.elementAt(index);
+                              String fileUploader =
+                                  fileHashes[fileHashes.keys.elementAt(index)]
+                                      ['fileHost'];
+                              showFileInfoDialog(fileHash, fileUploader);
+                            },
+                          ),
+                          Visibility(
+                            visible: canFileBeDeleted,
+                            child: IconButton(
                               splashRadius: 10,
                               icon: const Icon(
-                                Icons.description_outlined,
+                                Icons.delete_outline,
                                 size: 12,
                               ),
                               onPressed: () {
+                                String fileName =
+                                    fileHashes[fileHashes.keys.elementAt(index)]
+                                        ["fileName"];
                                 String fileHash =
                                     fileHashes.keys.elementAt(index);
-                                String fileUploader =
-                                    fileHashes[fileHashes.keys.elementAt(index)]
-                                        ['fileHost'];
-                                showFileInfoDialog(fileHash, fileUploader);
+                                deleteFile(fileName, fileHash);
                               },
                             ),
-                            Visibility(
-                              visible: canFileBeDeleted,
-                              child: IconButton(
-                                splashRadius: 10,
-                                icon: const Icon(
-                                  Icons.delete_outline,
-                                  size: 12,
-                                ),
-                                onPressed: () {
-                                  String fileName = fileHashes[fileHashes.keys
-                                      .elementAt(index)]["fileName"];
-                                  String fileHash =
-                                      fileHashes.keys.elementAt(index);
-                                  deleteFile(fileName, fileHash);
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     )
                   ],
@@ -1184,11 +1214,10 @@ class MyHomePageState extends State<MyHomePage> {
           children: [
             Column(
               children: [
-                SizedBox(
-                  height: 50,
-                  width: double.maxFinite,
-                  child: Center(
-                      child: Row(
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.start,
                     children: [
                       createTopNavBarButton(
                           "SEARCH", Icons.search, toggleSeachVisibility),
@@ -1221,16 +1250,12 @@ class MyHomePageState extends State<MyHomePage> {
                               return const CircularProgressIndicator();
                             }
                           }),
-                      Expanded(
-                        child: Container(),
-                      ),
-                      Align(
-                          alignment: Alignment.centerRight,
-                          child: Container(
-                              margin: const EdgeInsets.only(right: 10),
-                              child: AvailableTokensView(_token)))
+                      Container(width: 40),
+                      Container(
+                          margin: const EdgeInsets.only(right: 10),
+                          child: AvailableTokensView(_token))
                     ],
-                  )),
+                  ),
                 ),
                 Container(height: 1, color: Colors.grey[100]),
                 Stack(
@@ -1367,6 +1392,7 @@ class MyHomePageState extends State<MyHomePage> {
                         // color: const Color(0xFFFFFDE7)
                       ),
                     ),
+                    Container(height: 1, color: Colors.grey[100]),
                   ],
                 ),
                 FutureBuilder(
@@ -1383,64 +1409,71 @@ class MyHomePageState extends State<MyHomePage> {
                 Container(height: 100),
               ],
             ),
-            Align(
-              alignment: Alignment.bottomRight,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Container(
-                      decoration: BoxDecoration(
-                          color: Colors.grey[400],
-                          borderRadius: BorderRadius.circular(2)),
-                      margin: const EdgeInsets.only(bottom: 10, left: 10),
-                      padding: const EdgeInsets.only(
-                          left: 5, right: 5, top: 0, bottom: 3),
-                      child: FutureBuilder(
-                        future: NetworkInfo().getWifiIP(),
-                        builder: (context, snapshot) {
-                          if (snapshot.hasData) {
-                            return SelectableText(
-                              "User ID: ${DomainRegistry.getID()}",
-                              style: TextStyle(
-                                  fontSize: 12, color: Colors.grey[700]),
-                            );
-                          } else {
-                            return const SizedBox(
-                                width: 12,
-                                height: 12,
-                                child: CircularProgressIndicator());
-                          }
-                        },
-                      )),
-                  Column(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Container(
-                          color: Colors.white,
-                          margin: const EdgeInsets.only(bottom: 10, right: 10),
-                          child: createTopNavBarButton(
-                              "CLEAR BLOCKCHAIN", Icons.clear_all, () {
-                            BlockChain.clearBlockchain();
+            Column(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Container(height: 1, color: Colors.grey[100]),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Flexible(
+                      child: Container(
+                          decoration: BoxDecoration(
+                              color: Colors.grey[400],
+                              borderRadius: BorderRadius.circular(2)),
+                          margin: const EdgeInsets.only(bottom: 10, left: 10),
+                          padding: const EdgeInsets.only(
+                              left: 5, right: 5, top: 0, bottom: 3),
+                          child: FutureBuilder(
+                            future: NetworkInfo().getWifiIP(),
+                            builder: (context, snapshot) {
+                              if (snapshot.hasData) {
+                                return SelectableText(
+                                  "User ID: ${DomainRegistry.getID()}",
+                                  style: TextStyle(
+                                      fontSize: 12, color: Colors.grey[700]),
+                                );
+                              } else {
+                                return const SizedBox(
+                                    width: 12,
+                                    height: 12,
+                                    child: CircularProgressIndicator());
+                              }
+                            },
+                          )),
+                    ),
+                    Column(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Container(
+                            color: Colors.white,
+                            margin:
+                                const EdgeInsets.only(bottom: 10, right: 10),
+                            child: createTopNavBarButton(
+                                "CLEAR BLOCKCHAIN", Icons.clear_all, () {
+                              BlockChain.clearBlockchain();
 
-                            rfBChain();
-                          }),
-                        ),
-                        Container(
-                          color: Colors.white,
-                          margin: const EdgeInsets.only(bottom: 10, right: 10),
-                          child: createTopNavBarButton(
-                              "VIEW BLOCKCHAIN", Icons.list, () async {
-                            Map<String, dynamic> blockchain =
-                                await getBlockchain();
+                              rfBChain();
+                            }),
+                          ),
+                          Container(
+                            color: Colors.white,
+                            margin:
+                                const EdgeInsets.only(bottom: 10, right: 10),
+                            child: createTopNavBarButton(
+                                "VIEW BLOCKCHAIN", Icons.list, () async {
+                              Map<String, dynamic> blockchain =
+                                  await getBlockchain();
 
-                            printBlockchainDialog(blockchain);
-                          }),
-                        ),
-                      ])
-                ],
-              ),
+                              printBlockchainDialog(blockchain);
+                            }),
+                          ),
+                        ])
+                  ],
+                ),
+              ],
             )
           ],
         ),
