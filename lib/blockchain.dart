@@ -6,7 +6,9 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:network_info_plus/network_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:testwindowsapp/blockchain_server.dart';
 import 'package:testwindowsapp/domain_regisrty.dart';
 import 'package:testwindowsapp/node.dart';
 import 'package:testwindowsapp/token.dart';
@@ -44,10 +46,11 @@ class BlockChain {
       fileHashes.add(hashByteData);
     }
 
-    Block newBlock = Block(
+    Block newBlock = Block.upload(
         fileName,
         fileExtension,
         fileSizeBytes,
+        shardByteHashString,
         shardHosts.length,
         Block.uploadEvent,
         eventCost,
@@ -56,20 +59,38 @@ class BlockChain {
         fileHost,
         fileHashes,
         merkleHashSalt,
-        "",
-        shardByteHashString);
+        "");
 
     return newBlock;
   }
 
-  // static Future<Block> create
+  static Block createDeleteBlock(
+      String fileName, String blockHash, String shardByteHash) {
+    Block newDeleteBlock = Block.delete(
+        fileName + "-deleted",
+        blockHash,
+        shardByteHash,
+        DateTime.now().millisecondsSinceEpoch,
+        Block.deleteEvent,
+        DomainRegistry.getID(),
+        Block.getRandString(),
+        "");
 
-  static void sendBlockchain(String receipientAddr, Block newBlock) async {
+    return newDeleteBlock;
+  }
+
+  static void sendBlockchain(String receipientAddr, Block newBlock, {bool fromServer=false}) async {
+    String ip = await BlockchainServer.getIP();
+    int port = await BlockchainServer.getPort();
     await http.post(Uri.parse("http://$receipientAddr/send_block"),
         headers: <String, String>{
           'ContentType': 'application/json; charset=UTF-8',
         },
-        body: jsonEncode(newBlock.toJson()));
+        body: jsonEncode({
+          "block": newBlock.event == Block.uploadEvent
+              ? jsonEncode(newBlock.toUploadBlockJson())
+              : jsonEncode(newBlock.toDeleteBlockJson()),
+        }));
   }
 
   static void addBlockToTempPool(Block tempBlock) {
@@ -104,28 +125,31 @@ class BlockChain {
   }
 
   static Future<Map<String, dynamic>> loadBlockchain() async {
-    try {
-      SharedPreferences prefs = await SharedPreferences.getInstance();
+    SharedPreferences prefs = await SharedPreferences.getInstance();
 
-      if (prefs.getString("blockchain_data") != null) {
-        Map<String, dynamic> blockchainData = Map<String, dynamic>.from(
-            jsonDecode(prefs.getString("blockchain_data")));
+    if (prefs.getString("blockchain_data") != null) {
+      Map<String, dynamic> blockchainData = Map<String, dynamic>.from(
+          jsonDecode(prefs.getString("blockchain_data")));
 
-        List<Block> i = [];
-        Map<String, dynamic> blockData = blockchainData["blocks"];
-        for (int k = 0; k < blockData.length; k++) {
-          Block j = Block.fromJson(blockData[blockData.keys.elementAt(k)]);
+      List<Block> i = [];
+      Map<String, dynamic> blockData = blockchainData["blocks"];
+      for (int k = 0; k < blockData.length; k++) {
+        Map<String, dynamic> block = blockData[blockData.keys.elementAt(k)];
+        if (block["event"] == Block.uploadEvent) {
+          Block j = Block.fromJsonUB(block);
+          i.add(j);
+        } else if (block["event"] == Block.deleteEvent) {
+          Block j = Block.fromJsonDB(block);
           i.add(j);
         }
-
-        blocks = i;
-        return blockchainData;
       }
-    } catch (e, trace) {
-      debugPrint(trace.toString());
-    }
 
-    return BlockChain.toJson();
+      blocks = i;
+      return blockchainData;
+    } else {
+      blocks = [Block.genesis()];
+      return toJson();
+    }
   }
 
   static void clearBlockchain() async {
@@ -151,8 +175,14 @@ class BlockChain {
 
   static Map<String, dynamic> toJson() {
     Map<String, dynamic> blocksJson = {};
-    for (var block in blocks) {
-      blocksJson[block.toJson()["fileName"]] = block.toJson();
+    for (Block block in blocks) {
+      if (block.event == Block.uploadEvent) {
+        blocksJson[block.toUploadBlockJson()["merkleRootHash"]] =
+            block.toUploadBlockJson();
+      } else if (block.event == Block.deleteEvent) {
+        blocksJson[block.toDeleteBlockJson()["merkleRootHash"]] =
+            block.toDeleteBlockJson();
+      }
     }
 
     return {
@@ -162,11 +192,13 @@ class BlockChain {
 }
 
 class Block {
-  static const  String deleteEvent = "delete";
+  static const String deleteEvent = "delete";
   static const String uploadEvent = "upload";
 
+  String blockFileHash;
   String fileName;
   String fileExtension;
+  String shardByteHash;
   int fileSizeBytes;
   int shardsCreated;
   String event;
@@ -179,14 +211,15 @@ class Block {
   String prevBlockHash;
   String merkleTreeRootHash;
 
-  String _shardByteHash;
-
   static const int saltLength = 10;
 
-  Block(
+  Block._();
+
+  Block.upload(
       this.fileName,
       this.fileExtension,
       this.fileSizeBytes,
+      this.shardByteHash,
       this.shardsCreated,
       this.event,
       this.eventCost,
@@ -195,13 +228,23 @@ class Block {
       this.fileHost,
       this.fileHashes,
       this.salt,
-      this.prevBlockHash,
-      this._shardByteHash);
+      this.prevBlockHash);
+
+  Block.delete(
+      this.fileName,
+      this.blockFileHash,
+      this.shardByteHash,
+      this.timeCreated,
+      this.event,
+      this.fileHost,
+      this.salt,
+      this.prevBlockHash);
 
   Block.genesis() {
     fileName = "genesis";
     fileExtension = "-";
     fileSizeBytes = 0;
+    shardByteHash = "";
     shardsCreated = 0;
     eventCost = 0;
     shardHosts = {};
@@ -210,16 +253,17 @@ class Block {
     fileHashes = [];
     salt = "salt";
     prevBlockHash = "-";
-    _shardByteHash = "";
 
     merkleTreeRootHash = createBlockHash();
   }
 
-  Block.fromJson(Map<String, dynamic> blockData) {
+  Block.fromJsonUB(Map<String, dynamic> blockData) {
     fileName = blockData["fileName"];
     fileExtension = blockData["fileExtension"];
     fileSizeBytes = blockData["fileSizeBytes"];
+    shardByteHash = blockData["shardByteHash"];
     shardsCreated = blockData["shardsCreated"];
+    event = blockData["event"];
     eventCost = blockData["eventCost"];
     shardHosts = Map<String, List>.from(blockData["shardHosts"]);
     timeCreated = blockData["timeCreated"];
@@ -227,7 +271,18 @@ class Block {
     fileHashes = List<String>.from(blockData["fileHashes"]);
     salt = blockData["salt"];
     prevBlockHash = blockData["prevBlockHash"];
-    _shardByteHash = blockData["shardByteHash"];
+    merkleTreeRootHash = blockData["merkleRootHash"];
+  }
+
+  Block.fromJsonDB(Map<String, dynamic> blockData) {
+    fileName = blockData["fileName"];
+    blockFileHash = blockData["blockHash"];
+    shardByteHash = blockData["shardByteHash"];
+    timeCreated = blockData["timeCreated"];
+    event = blockData["event"];
+    fileHost = blockData["fileHost"];
+    salt = blockData["salt"];
+    prevBlockHash = blockData["prevBlockHash"];
     merkleTreeRootHash = blockData["merkleRootHash"];
   }
 
@@ -243,18 +298,20 @@ class Block {
 
   String createBlockHash() {
     String blockHash = crypto.sha256
-        .convert((_shardByteHash + salt + prevBlockHash).runes.toList())
+        .convert((shardByteHash + salt + prevBlockHash).runes.toList())
         .toString();
 
     return blockHash;
   }
 
-  Map<String, dynamic> toJson() {
+  Map<String, dynamic> toUploadBlockJson() {
     return {
       "fileName": fileName,
       "fileExtension": fileExtension,
       "fileSizeBytes": fileSizeBytes,
+      "shardByteHash": shardByteHash,
       "shardsCreated": shardsCreated,
+      "event": event,
       "eventCost": eventCost,
       "shardHosts": shardHosts,
       "timeCreated": timeCreated,
@@ -263,7 +320,20 @@ class Block {
       "salt": salt,
       "merkleRootHash": merkleTreeRootHash,
       "prevBlockHash": prevBlockHash,
-      "shardByteHash": _shardByteHash
+    };
+  }
+
+  Map<String, dynamic> toDeleteBlockJson() {
+    return {
+      "fileName": fileName,
+      "blockHash": blockFileHash,
+      "shardByteHash": shardByteHash,
+      "timeCreated": timeCreated,
+      "event": event,
+      "fileHost": fileHost,
+      "salt": salt,
+      "merkleRootHash": merkleTreeRootHash,
+      "prevBlockHash": prevBlockHash
     };
   }
 }

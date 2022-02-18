@@ -1,21 +1,18 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:isolate';
 import 'dart:math';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:intl/intl.dart';
 import 'package:filesize/filesize.dart';
-import 'package:easy_isolate/easy_isolate.dart' as ei;
+import 'package:pretty_json/pretty_json.dart';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:network_info_plus/network_info_plus.dart';
-// import 'package:shelf_multipart/form_data.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sn_progress_dialog/progress_dialog.dart';
 import 'package:testwindowsapp/blockchain.dart';
@@ -26,16 +23,14 @@ import 'package:testwindowsapp/message_handler.dart';
 import 'package:testwindowsapp/node.dart';
 import 'package:testwindowsapp/token.dart';
 import 'package:testwindowsapp/token_view.dart';
-import 'package:window_size/window_size.dart';
 import 'package:retrieval/trie.dart';
-
 import 'constants.dart';
 import 'user_session.dart';
 import 'utils.dart';
 
 final Token _token = Token.getInstance();
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   UserSession.lockScreenSize();
@@ -116,7 +111,7 @@ class MyHomePageState extends State<MyHomePage> {
   bool searchVisible = false;
   bool autoCompleteVisible = false;
   bool searchMode = false;
-  Map<String, dynamic> fileNames = {};
+  Map<String, dynamic> fileHashes = {};
   List<int> filesDownloading = [];
   List<String> searchResults = [];
   BlockchainServer server;
@@ -177,14 +172,16 @@ class MyHomePageState extends State<MyHomePage> {
       );
 
       backupNodes[i.toString()] = {...jsonDecode(r.data)};
-      backupNodes[i.toString()].add(KnownNodes.knownNodes.toList()[i].getNodeAddress());
+      backupNodes[i.toString()]
+          .add(KnownNodes.knownNodes.toList()[i].getNodeAddress());
     }
 
     return backupNodes;
   }
 
   List<Node> getNodesReceivingShard(int n) {
-    Set<Node> tempList = KnownNodes.knownNodes;
+    Set<Node> tempList = {};
+    tempList.addAll(KnownNodes.knownNodes);
     List<Node> selectedNodes = [];
 
     for (int i = 0; i < n; i++) {
@@ -232,7 +229,6 @@ class MyHomePageState extends State<MyHomePage> {
         0,
         (platformFile.path).toString().length -
             result.files.single.name.length);
-    String myIP = await NetworkInfo().getWifiIP();
 
     List<List<int>> bytes = [];
     List<File> partitionFiles = [];
@@ -271,13 +267,9 @@ class MyHomePageState extends State<MyHomePage> {
         pd.close();
       }
 
-      //Create list of nodes each shard can be sent to 
+      //Create list of nodes each shard can be sent to
       Map<String, Set> nodesReceiving =
           await getKnownNodesForNodes(getNodesReceivingShard(partitions));
-      // for (int i = 0; i < partitions; i++) {
-      //   nodesReceiving[i.toString()]
-      //       .add(KnownNodes.knownNodes.toList()[i].address);
-      // }
 
       //send shard byte data to selected known nodes
       for (int i = 0; i < partitions; i++) {
@@ -300,13 +292,15 @@ class MyHomePageState extends State<MyHomePage> {
           await BlockChain.createNewBlock(bytes, platformFile, result, newList);
 
       //send the block to all known nodes
-      _sendBlocksToKnownNodes(myIP, tempBlock);
+      _sendBlocksToKnownNodes(tempBlock);
     }
 
     return true;
   }
 
-  void _sendBlocksToKnownNodes(String myIP, Block tempBlock) async {
+  void _sendBlocksToKnownNodes(Block tempBlock) async {
+    String myIP = await NetworkInfo().getWifiIP();
+
     Set<Node> nodesReceivingShard = {};
     int myPort = await BlockchainServer.getPort();
 
@@ -315,10 +309,14 @@ class MyHomePageState extends State<MyHomePage> {
     nodesReceivingShard.add(self);
 
     for (int i = 0; i < KnownNodes.knownNodes.length; i++) {
-      nodesReceivingShard.add(KnownNodes.knownNodes.toList()[i]);
+      if ((KnownNodes.knownNodes.toList()[i]).getNodeAddress() !=
+          self.getNodeAddress()) {
+        nodesReceivingShard.add(KnownNodes.knownNodes.toList()[i]);
+      }
     }
 
     for (Node node in nodesReceivingShard) {
+      print(node.port);
       BlockChain.sendBlockchain(node.getNodeAddress(), tempBlock);
     }
   }
@@ -349,8 +347,9 @@ class MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  Future downloadFileFromBlockchain(String fileName, int index) async {
-    Block block = Block.fromJson((await getBlockchain())["blocks"][fileName]);
+  Future downloadFileFromBlockchain(
+      String fileHash, String fileName, int index) async {
+    Block block = Block.fromJsonUB((await getBlockchain())["blocks"][fileHash]);
 
     String fileExtension = block.fileExtension;
     var shardHosts = block.shardHosts;
@@ -358,11 +357,9 @@ class MyHomePageState extends State<MyHomePage> {
 
     int shardsDownloaded = 0;
     bool badShard = false;
-    shardHosts.forEach((key, possibleNodes) {
-      if (badShard) {
-        return;
-      }
-
+    for (int i = 0; i < shardHosts.length; i++) {
+      String key = shardHosts.keys.elementAt(i);
+      List possibleNodes = shardHosts[key];
       for (String nodeAddr in possibleNodes) {
         bool error = false;
 
@@ -386,7 +383,6 @@ class MyHomePageState extends State<MyHomePage> {
                 context, "Bad shard $fileName-$key from $nodeAddr ");
             error = true;
             badShard = true;
-            print(badShard);
           }
         }).onError((error, stackTrace) {
           error = true;
@@ -396,7 +392,11 @@ class MyHomePageState extends State<MyHomePage> {
           return;
         }
       }
-    });
+      if (badShard) {
+        return;
+      }
+    }
+
     toggleDownloadProgressVisibility(index);
   }
 
@@ -451,6 +451,20 @@ class MyHomePageState extends State<MyHomePage> {
     setState(() {
       filesDownloading.remove(index);
     });
+  }
+
+  void deleteFile(String fileName, String fileHash) async {
+    Block block = Block.fromJsonUB((await getBlockchain())["blocks"][fileHash]);
+
+    if (block.fileHost != DomainRegistry.getID()) {
+      throw Exception("Permission denied. File not uploaded by you");
+    }
+
+    String blockHash = block.merkleTreeRootHash;
+    Block deleteBlock =
+        BlockChain.createDeleteBlock(fileName, blockHash, block.shardByteHash);
+
+    _sendBlocksToKnownNodes(deleteBlock);
   }
 
   //Dialog methods
@@ -764,8 +778,9 @@ class MyHomePageState extends State<MyHomePage> {
                         shrinkWrap: true,
                         itemCount: KnownNodes.knownNodes.length,
                         itemBuilder: (context, index) {
-                          return Text(
-                              KnownNodes.knownNodes.toList()[index].getNodeAddress());
+                          return Text(KnownNodes.knownNodes
+                              .toList()[index]
+                              .getNodeAddress());
                         }),
                   ),
             actions: <Widget>[
@@ -782,8 +797,30 @@ class MyHomePageState extends State<MyHomePage> {
         });
   }
 
-  void showFileInfoDialog(String fileName, String uploader) async {
-    Map<String, dynamic> fileData = fileNames[fileName];
+  Future printBlockchainDialog(Map<String, dynamic> blockchain) async {
+    return showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            scrollable: true,
+            content: SelectableText(prettyJson(blockchain, indent: 2),
+                style: TextStyle(fontSize: 12)),
+            actions: <Widget>[
+              FlatButton(
+                color: Colors.green,
+                textColor: Colors.white,
+                child: Text('OK'),
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          );
+        });
+  }
+
+  void showFileInfoDialog(String fileHash, String uploader) async {
+    Map<String, dynamic> fileData = fileHashes[fileHash];
     return showDialog(
         context: context,
         builder: (context) {
@@ -902,17 +939,9 @@ class MyHomePageState extends State<MyHomePage> {
   }
 
   Widget displayBlockchainFiles(Map<String, dynamic> blockchain) {
-    fileNames.clear();
+    _refreshBlockchain();
 
-    blockchain["blocks"].forEach((fileName, value) {
-      if (fileName != "genesis") {
-        trie.insert(fileName);
-
-        fileNames[fileName] = blockchain["blocks"][fileName];
-      }
-    });
-
-    if (fileNames.isEmpty) {
+    if (fileHashes.isEmpty) {
       return Expanded(
           child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -930,14 +959,17 @@ class MyHomePageState extends State<MyHomePage> {
     }
 
     return ListView.builder(
+        physics: BouncingScrollPhysics(),
         shrinkWrap: true,
-        itemCount: fileNames.length,
+        itemCount: fileHashes.length,
         itemBuilder: (context, index) {
-          String fileName = fileNames.keys.elementAt(index);
-          int fileSizeBytes =
-              fileNames[fileNames.keys.elementAt(index)]['fileSizeBytes'];
-          int numberOfShards =
-              fileNames[fileNames.keys.elementAt(index)]['shardsCreated'];
+          Map<String, dynamic> block =
+              fileHashes[fileHashes.keys.elementAt(index)];
+          String fileName = block["fileName"];
+          String fileHash = block["merkleRootHash"];
+          int fileSizeBytes = block['fileSizeBytes'];
+          int numberOfShards = block['shardsCreated'];
+          bool canFileBeDeleted = block['fileHost'] == DomainRegistry.getID();
 
           return InkWell(
             onTap: () async {
@@ -949,8 +981,7 @@ class MyHomePageState extends State<MyHomePage> {
 
               if (canDownload) {
                 Future.delayed(const Duration(seconds: 2));
-                downloadFileFromBlockchain(
-                    fileNames.keys.elementAt(index), index);
+                downloadFileFromBlockchain(fileHash, fileName, index);
               }
             },
             child: Column(
@@ -967,7 +998,7 @@ class MyHomePageState extends State<MyHomePage> {
                           children: [
                             Row(children: [
                               Text(
-                                fileNames.keys.elementAt(index),
+                                fileName,
                                 style: const TextStyle(fontSize: 15),
                               ),
                               const Text(
@@ -981,11 +1012,11 @@ class MyHomePageState extends State<MyHomePage> {
                                   onTap: () {
                                     MessageHandler.showToast(
                                         context,
-                                        fileNames[fileNames.keys
+                                        fileHashes[fileHashes.keys
                                             .elementAt(index)]['fileHost']);
                                   },
                                   child: Text(
-                                    fileNames[fileNames.keys.elementAt(index)]
+                                    fileHashes[fileHashes.keys.elementAt(index)]
                                         ['fileHost'],
                                     style: const TextStyle(
                                         color: Colors.blue,
@@ -1006,7 +1037,7 @@ class MyHomePageState extends State<MyHomePage> {
                                 Container(
                                   alignment: Alignment.centerRight,
                                   child: Text(
-                                    "Uploaded: ${convertTimestampToDate(fileNames[fileNames.keys.elementAt(index)]["timeCreated"])}",
+                                    "Uploaded: ${convertTimestampToDate(fileHashes[fileHashes.keys.elementAt(index)]["timeCreated"])}",
                                     style: const TextStyle(
                                         fontSize: 11, color: Colors.grey),
                                   ),
@@ -1020,7 +1051,7 @@ class MyHomePageState extends State<MyHomePage> {
                                 Container(
                                   alignment: Alignment.centerRight,
                                   child: Text(
-                                    filesize(fileNames[fileNames.keys
+                                    filesize(fileHashes[fileHashes.keys
                                         .elementAt(index)]["fileSizeBytes"]),
                                     style: const TextStyle(
                                         fontSize: 11, color: Colors.grey),
@@ -1041,17 +1072,34 @@ class MyHomePageState extends State<MyHomePage> {
                             IconButton(
                               splashRadius: 10,
                               icon: const Icon(
-                                Icons.description,
+                                Icons.description_outlined,
                                 size: 12,
                               ),
                               onPressed: () {
-                                String fileName =
-                                    fileNames.keys.elementAt(index);
+                                String fileHash =
+                                    fileHashes.keys.elementAt(index);
                                 String fileUploader =
-                                    fileNames[fileNames.keys.elementAt(index)]
+                                    fileHashes[fileHashes.keys.elementAt(index)]
                                         ['fileHost'];
-                                showFileInfoDialog(fileName, fileUploader);
+                                showFileInfoDialog(fileHash, fileUploader);
                               },
+                            ),
+                            Visibility(
+                              visible: canFileBeDeleted,
+                              child: IconButton(
+                                splashRadius: 10,
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  size: 12,
+                                ),
+                                onPressed: () {
+                                  String fileName = fileHashes[fileHashes.keys
+                                      .elementAt(index)]["fileName"];
+                                  String fileHash =
+                                      fileHashes.keys.elementAt(index);
+                                  deleteFile(fileName, fileHash);
+                                },
+                              ),
                             ),
                           ],
                         ),
@@ -1068,18 +1116,42 @@ class MyHomePageState extends State<MyHomePage> {
         });
   }
 
-  void refreshBlockchain() async {
-    Map<String, dynamic> blockchain = await getBlockchain();
-    fileNames.clear();
+  void rfBChain() {
     setState(() {
-      blockchain["blocks"].forEach((fileName, value) {
-        if (fileName != "genesis") {
-          trie.insert(fileName);
-
-          fileNames[fileName] = blockchain["blocks"][fileName];
-        }
-      });
+      _refreshBlockchain();
     });
+  }
+
+  void _refreshBlockchain() async {
+    List<String> deletedFileHashes = await getDeletedFiles();
+    Map<String, dynamic> blockchain = await getBlockchain();
+    fileHashes.clear();
+
+    blockchain["blocks"].forEach((fileHash, key) {
+      String fileName = blockchain["blocks"][fileHash]["fileName"];
+      if (fileName != "genesis" &&
+          key["event"] != Block.deleteEvent &&
+          !deletedFileHashes.contains(key["merkleRootHash"])) {
+        trie.insert(fileName);
+
+        fileHashes[fileHash] = blockchain["blocks"][fileHash];
+      }
+    });
+  }
+
+  Future<List<String>> getDeletedFiles() async {
+    List<String> filesDeleted = [];
+    getBlockchain().whenComplete(() {
+      List<Block> blocks = BlockChain.blocks;
+
+      for (Block block in blocks) {
+        if (block.event == Block.deleteEvent) {
+          filesDeleted.add(block.blockFileHash);
+        }
+      }
+    });
+
+    return filesDeleted;
   }
 
   List<Node> getKnownNodes() {
@@ -1095,21 +1167,16 @@ class MyHomePageState extends State<MyHomePage> {
     requestStorageLocationDialog();
     DomainRegistry.generateID();
     UserSession.saveNewUser();
+    _refreshBlockchain();
+
+    DomainRegistry.getNodeIP(DomainRegistry.getID()).then((value) {
+      print(value);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    getBlockchain().then((blockchain) {
-      fileNames.clear();
-
-      blockchain["blocks"].forEach((fileName, value) {
-        if (fileName != "genesis") {
-          trie.insert(fileName);
-
-          fileNames[fileName] = blockchain["blocks"][fileName];
-        }
-      });
-    });
+    // _refreshBlockchain();
     return SafeArea(
       child: Scaffold(
         backgroundColor: Colors.white,
@@ -1127,9 +1194,6 @@ class MyHomePageState extends State<MyHomePage> {
                           "SEARCH", Icons.search, toggleSeachVisibility),
                       createTopNavBarButton("UPLOAD", Icons.upload_file,
                           () async {
-                        // print("sd");
-                        // print(await getKnownNodesForNodes());
-
                         uploadFile();
                       }),
                       createTopNavBarButton("ADD NODE", Icons.person_add,
@@ -1264,17 +1328,19 @@ class MyHomePageState extends State<MyHomePage> {
                                 shrinkWrap: true,
                                 itemCount: searchResults.length,
                                 itemBuilder: (context, index) {
+                                  String fileName = searchResults[index];
+                                  String fileHash = searchResults[index];
                                   return InkWell(
                                     onTap: () {
                                       downloadFileFromBlockchain(
-                                          searchResults[index], 0);
+                                          fileHash, fileName, 0);
                                     },
                                     child: Row(
                                       children: [
                                         Container(
                                             padding: const EdgeInsets.only(
                                                 top: 10, bottom: 10, left: 20),
-                                            child: Text(searchResults[index])),
+                                            child: Text(fileName)),
                                         Expanded(child: Container()),
                                         Container(
                                             margin: const EdgeInsets.only(
@@ -1313,13 +1379,15 @@ class MyHomePageState extends State<MyHomePage> {
                       } else {
                         return const CircularProgressIndicator();
                       }
-                    })
+                    }),
+                Container(height: 100),
               ],
             ),
             Align(
               alignment: Alignment.bottomRight,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Container(
                       decoration: BoxDecoration(
@@ -1345,15 +1413,32 @@ class MyHomePageState extends State<MyHomePage> {
                           }
                         },
                       )),
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 10, right: 10),
-                    child: createTopNavBarButton(
-                        "CLEAR BLOCKCHAIN", Icons.clear_all, () {
-                      BlockChain.clearBlockchain();
+                  Column(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Container(
+                          color: Colors.white,
+                          margin: const EdgeInsets.only(bottom: 10, right: 10),
+                          child: createTopNavBarButton(
+                              "CLEAR BLOCKCHAIN", Icons.clear_all, () {
+                            BlockChain.clearBlockchain();
 
-                      refreshBlockchain();
-                    }),
-                  ),
+                            rfBChain();
+                          }),
+                        ),
+                        Container(
+                          color: Colors.white,
+                          margin: const EdgeInsets.only(bottom: 10, right: 10),
+                          child: createTopNavBarButton(
+                              "VIEW BLOCKCHAIN", Icons.list, () async {
+                            Map<String, dynamic> blockchain =
+                                await getBlockchain();
+
+                            printBlockchainDialog(blockchain);
+                          }),
+                        ),
+                      ])
                 ],
               ),
             )

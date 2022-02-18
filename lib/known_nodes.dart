@@ -9,7 +9,7 @@ class KnownNodes {
   static const int maximumKnownNodesAllowed = 10;
   static Set<Node> knownNodes = {};
 
-  static Future addNode(String ip, int port, {bool fromServer=false}) async {
+  static Future addNode(String ip, int port, {bool fromServer = false}) async {
     String address = "$ip:$port";
     Node newNode = Node(ip, port);
 
@@ -23,14 +23,22 @@ class KnownNodes {
 
       if (!fromServer) {
         await Dio().post("http://$address/add_node",
-          data: FormData.fromMap({
-            "addingNodeIp": myIP,
-            "addingNodePort": myPort,
-            "addr": address,
-          }));
+            data: FormData.fromMap({
+              "addingNodeIp": myIP,
+              "addingNodePort": myPort,
+              "addr": address,
+            }));
       }
-      
+
+      for (Node node in knownNodes) {
+        if (node.getNodeAddress() == "$ip:$port") {
+          return;
+        }
+      }
+
       knownNodes.add(newNode);
+
+      // print(knownNodes);
     } catch (e, stacktrace) {
       debugPrint(e.toString());
       debugPrint(stacktrace.toString());

@@ -141,15 +141,22 @@ class BlockchainServer {
     app.post("/send_block", (Request request) async {
       final parameters = jsonDecode(await request.readAsString());
 
-      Map<String, dynamic> block = parameters;
-      Block tempBlock = Block.fromJson(block);
+      Map<String, dynamic> block = jsonDecode(parameters["block"]);
+      Block tempBlock;
+      if (block["event"] == Block.uploadEvent) {
+        tempBlock = Block.fromJsonUB(block);
+      } else if (block["event"] == Block.deleteEvent) {
+        tempBlock = Block.fromJsonDB(block);
+      }
+
       var blocks = BlockChain.blocks;
 
       if (blocks
-          .where((Block block) => block.fileName == tempBlock.fileName)
+          .where((block) => block.timeCreated == tempBlock.timeCreated)
           .isEmpty) {
         state.getKnownNodes().forEach((node) {
-          BlockChain.sendBlockchain(node.getNodeAddress(), tempBlock);
+          BlockChain.sendBlockchain(node.getNodeAddress(), tempBlock,
+              fromServer: true);
         });
 
         BlockChain.addBlockToTempPool(tempBlock);
@@ -157,7 +164,7 @@ class BlockchainServer {
         if (!BlockChain.updatingBlockchain) {
           BlockChain.addBlockToBlockchain();
         }
-        state.refreshBlockchain();
+        state.rfBChain();
       }
 
       return Response.ok("done");
@@ -169,7 +176,6 @@ class BlockchainServer {
       final parameters = jsonDecode(await request.readAsString());
 
       int depth = int.parse(parameters["depth"]) - 1;
-      print(depth);
       Set<String> nodes = {...parameters["nodes"]};
       String sender = parameters["sender"];
       String origin = parameters["origin"];
@@ -198,7 +204,6 @@ class BlockchainServer {
               },
             );
 
-            print(Set<String>.from(jsonDecode(r.data)));
             nodes.addAll(Set<String>.from(jsonDecode(r.data)));
           }
         }
