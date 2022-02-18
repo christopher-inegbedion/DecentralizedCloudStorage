@@ -1214,47 +1214,51 @@ class MyHomePageState extends State<MyHomePage> {
           children: [
             Column(
               children: [
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: [
-                      createTopNavBarButton(
-                          "SEARCH", Icons.search, toggleSeachVisibility),
-                      createTopNavBarButton("UPLOAD", Icons.upload_file,
-                          () async {
-                        uploadFile();
-                      }),
-                      createTopNavBarButton("ADD NODE", Icons.person_add,
-                          () async {
-                        List result = await showAddNodeDialog();
-                        String ip = result[0];
-                        int port = int.parse(result[1]);
+                Container(
+                  margin: EdgeInsets.only(top: 10),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: [
+                        createTopNavBarButton(
+                            "SEARCH", Icons.search, toggleSeachVisibility),
+                        createTopNavBarButton("UPLOAD", Icons.upload_file,
+                            () async {
+                          uploadFile();
+                        }),
+                        createTopNavBarButton("ADD NODE", Icons.person_add,
+                            () async {
+                          List result = await showAddNodeDialog();
+                          String ip = result[0];
+                          int port = int.parse(result[1]);
 
-                        KnownNodes.addNode(ip, port).whenComplete(() {
-                          MessageHandler.showSuccessMessage(
-                              context, "Node $ip:$port has been added");
-                        });
-                      }),
-                      createTopNavBarButton("VIEW KNOWN NODES", Icons.person,
-                          () {
-                        showKnownNodesDialog();
-                      }),
-                      FutureBuilder(
-                          future: BlockchainServer.getPort(),
-                          builder: (context, snapshot) {
-                            if (snapshot.hasData) {
-                              int port = snapshot.data;
-                              return SelectableText("port: ${port.toString()}");
-                            } else {
-                              return const CircularProgressIndicator();
-                            }
-                          }),
-                      Container(width: 40),
-                      Container(
-                          margin: const EdgeInsets.only(right: 10),
-                          child: AvailableTokensView(_token))
-                    ],
+                          KnownNodes.addNode(ip, port).whenComplete(() {
+                            MessageHandler.showSuccessMessage(
+                                context, "Node $ip:$port has been added");
+                          });
+                        }),
+                        createTopNavBarButton("VIEW KNOWN NODES", Icons.person,
+                            () {
+                          showKnownNodesDialog();
+                        }),
+                        FutureBuilder(
+                            future: BlockchainServer.getPort(),
+                            builder: (context, snapshot) {
+                              if (snapshot.hasData) {
+                                int port = snapshot.data;
+                                return SelectableText(
+                                    "port: ${port.toString()}");
+                              } else {
+                                return const CircularProgressIndicator();
+                              }
+                            }),
+                        Container(width: 40),
+                        Container(
+                            margin: const EdgeInsets.only(right: 10),
+                            child: AvailableTokensView(_token))
+                      ],
+                    ),
                   ),
                 ),
                 Container(height: 1, color: Colors.grey[100]),
