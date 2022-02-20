@@ -28,6 +28,8 @@ class BlockChain {
       PlatformFile file,
       FilePickerResult result,
       Map<String, List> shardHosts) async {
+    DomainRegistry _domainRegistry = DomainRegistry(
+        await BlockchainServer.getIP(), await BlockchainServer.getPort());
     String fileName = getFileName(file, result);
     String fileExtension = file.extension;
     int fileSizeBytes = file.size;
@@ -35,7 +37,7 @@ class BlockChain {
     List<String> fileHashes = [];
 
     int timeCreated = DateTime.now().millisecondsSinceEpoch;
-    String fileHost = DomainRegistry.getID();
+    String fileHost = _domainRegistry.getID();
     String merkleHashSalt = Block.getRandString();
     String shardByteHashString = "";
 
@@ -64,22 +66,23 @@ class BlockChain {
     return newBlock;
   }
 
-  static Block createDeleteBlock(
-      String fileName, String blockHash, String shardByteHash) {
+  static Block createDeleteBlock(String fileName, String blockHash,
+      String shardByteHash, String fileHost) {
     Block newDeleteBlock = Block.delete(
         fileName + "-deleted",
         blockHash,
         shardByteHash,
         DateTime.now().millisecondsSinceEpoch,
         Block.deleteEvent,
-        DomainRegistry.getID(),
+        fileHost,
         Block.getRandString(),
         "");
 
     return newDeleteBlock;
   }
 
-  static void sendBlockchain(String receipientAddr, Block newBlock, {bool fromServer=false}) async {
+  static void sendBlockchain(String receipientAddr, Block newBlock,
+      {bool fromServer = false}) async {
     String ip = await BlockchainServer.getIP();
     int port = await BlockchainServer.getPort();
     await http.post(Uri.parse("http://$receipientAddr/send_block"),

@@ -7,17 +7,21 @@ import 'package:testwindowsapp/blockchain_server.dart';
 import 'package:http/http.dart' as http;
 
 class DomainRegistry {
+  String ip;
+  int port;
   static String _id;
 
-  DomainRegistry._();
+  DomainRegistry(this.ip, this.port);
 
-  static void generateID() async {
-    List<int> bytes = utf8.encode(
-        "${await NetworkInfo().getWifiIP()}${await BlockchainServer.getPort()}");
+  void generateID() {
+    List<int> bytes = utf8.encode("$ip$port");
     Digest digest = sha256.convert(bytes);
 
     _id = digest.toString();
+    saveID(_id, ip, port);
+  }
 
+  void saveID(String id, String ip, int port) async {
     await http.put(
         Uri.parse(
             "https://shr-7dd12-default-rtdb.europe-west1.firebasedatabase.app/$_id/.json"),
@@ -27,7 +31,7 @@ class DomainRegistry {
         }));
   }
 
-  static String getID() {
+  String getID() {
     return _id;
   }
 
@@ -50,9 +54,8 @@ class DomainRegistry {
 
   static Future<int> getNodePort(String id) async {
     int port;
-    Response r = await http.get(
-        Uri.parse(
-            "https://shr-7dd12-default-rtdb.europe-west1.firebasedatabase.app/$id/.json"));
+    Response r = await http.get(Uri.parse(
+        "https://shr-7dd12-default-rtdb.europe-west1.firebasedatabase.app/$id/.json"));
 
     if (r.body != null) {
       port = int.parse((jsonDecode(r.body)["ip"]).toString());

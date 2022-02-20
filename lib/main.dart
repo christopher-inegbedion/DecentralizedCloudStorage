@@ -29,6 +29,7 @@ import 'user_session.dart';
 import 'utils.dart';
 
 final Token _token = Token.getInstance();
+DomainRegistry _domainRegistry;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,6 +39,8 @@ void main() async {
   UserSession().logLoginTime();
 
   _token.deductTokens();
+  _domainRegistry = DomainRegistry(
+      await BlockchainServer.getIP(), await BlockchainServer.getPort());
 
   runApp(const MyApp());
 }
@@ -459,13 +462,13 @@ class MyHomePageState extends State<MyHomePage> {
   void deleteFile(String fileName, String fileHash) async {
     Block block = Block.fromJsonUB((await getBlockchain())["blocks"][fileHash]);
 
-    if (block.fileHost != DomainRegistry.getID()) {
+    if (block.fileHost != _domainRegistry.getID()) {
       throw Exception("Permission denied. File not uploaded by you");
     }
 
     String blockHash = block.merkleTreeRootHash;
-    Block deleteBlock =
-        BlockChain.createDeleteBlock(fileName, blockHash, block.shardByteHash);
+    Block deleteBlock = BlockChain.createDeleteBlock(
+        fileName, blockHash, block.shardByteHash, _domainRegistry.getID());
 
     _sendBlocksToKnownNodes(deleteBlock);
   }
@@ -997,7 +1000,7 @@ class MyHomePageState extends State<MyHomePage> {
           String fileHash = block["merkleRootHash"];
           int fileSizeBytes = block['fileSizeBytes'];
           int numberOfShards = block['shardsCreated'];
-          bool canFileBeDeleted = block['fileHost'] == DomainRegistry.getID();
+          bool canFileBeDeleted = block['fileHost'] == _domainRegistry.getID();
 
           return InkWell(
             onTap: () async {
@@ -1195,13 +1198,9 @@ class MyHomePageState extends State<MyHomePage> {
     BlockchainServer.startServer(context, this);
 
     requestStorageLocationDialog();
-    DomainRegistry.generateID();
+    _domainRegistry.generateID();
     UserSession.saveNewUser();
     _refreshBlockchain();
-
-    DomainRegistry.getNodeIP(DomainRegistry.getID()).then((value) {
-      print(value);
-    });
   }
 
   @override
@@ -1215,7 +1214,7 @@ class MyHomePageState extends State<MyHomePage> {
             Column(
               children: [
                 Container(
-                  margin: EdgeInsets.only(top: 10),
+                  margin: EdgeInsets.only(top: 10, bottom: 10),
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
@@ -1434,7 +1433,7 @@ class MyHomePageState extends State<MyHomePage> {
                             builder: (context, snapshot) {
                               if (snapshot.hasData) {
                                 return SelectableText(
-                                  "User ID: ${DomainRegistry.getID()}",
+                                  "User ID: ${_domainRegistry.getID()}",
                                   style: TextStyle(
                                       fontSize: 12, color: Colors.grey[700]),
                                 );
