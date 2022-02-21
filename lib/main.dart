@@ -289,13 +289,13 @@ class MyHomePageState extends State<MyHomePage> {
         }
       }
 
-      Map<String, List> newList = {};
+      Map<String, List> shardHosts = {};
       nodesReceiving.forEach((key, value) {
-        newList[key] = value.toList();
+        shardHosts[key] = value.toList();
       });
 
       Block tempBlock =
-          await BlockChain.createNewBlock(bytes, platformFile, result, newList);
+          await BlockChain.createNewBlock(bytes, platformFile, result, shardHosts);
 
       //send the block to all known nodes
       _sendBlocksToKnownNodes(tempBlock);
@@ -366,10 +366,13 @@ class MyHomePageState extends State<MyHomePage> {
     for (int i = 0; i < shardHosts.length; i++) {
       String key = shardHosts.keys.elementAt(i);
       List possibleNodes = shardHosts[key];
-      for (String nodeAddr in possibleNodes) {
+      for (String nodeID in possibleNodes) {
+        String ip = await DomainRegistry.getNodeIP(nodeID);
+        int port = await DomainRegistry.getNodePort(nodeID);
+
         bool error = false;
 
-        Dio().post("http://$nodeAddr/send_file",
+        Dio().post("http://$ip:$port/send_file",
             data: {"fileName": "$fileName-$key"}).then((response) async {
           List<int> byteArray = List<int>.from(json.decode(response.data));
           SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -386,7 +389,7 @@ class MyHomePageState extends State<MyHomePage> {
             });
           } else {
             MessageHandler.showFailureMessage(
-                context, "Bad shard $fileName-$key from $nodeAddr ");
+                context, "Bad shard $fileName-$key from $nodeID ");
             error = true;
             badShard = true;
           }

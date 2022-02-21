@@ -48,6 +48,9 @@ class BlockChain {
       fileHashes.add(hashByteData);
     }
 
+    //convert shard hosts ip to port
+    Map<String, List> hosts = _convertShardHostsIpToId(shardHosts);
+
     Block newBlock = Block.upload(
         fileName,
         fileExtension,
@@ -56,7 +59,7 @@ class BlockChain {
         shardHosts.length,
         Block.uploadEvent,
         eventCost,
-        shardHosts,
+        hosts,
         timeCreated,
         fileHost,
         fileHashes,
@@ -191,6 +194,21 @@ class BlockChain {
     return {
       "blocks": blocksJson,
     };
+  }
+
+  static Map<String, List> _convertShardHostsIpToId(
+      Map<String, List> shardHosts) {
+    Map<String, List> newList = {};
+
+    shardHosts.forEach((key, value) {
+      newList[key] = [];
+
+      value.forEach((addr) {
+        newList[key].add(DomainRegistry.generateNodeID(addr));
+      });
+    });
+
+    return newList;
   }
 }
 

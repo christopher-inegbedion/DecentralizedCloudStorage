@@ -13,8 +13,15 @@ class DomainRegistry {
 
   DomainRegistry(this.ip, this.port);
 
+  static String generateNodeID(String addr) {
+    List<int> bytes = utf8.encode(addr);
+    Digest digest = sha256.convert(bytes);
+
+    return digest.toString();
+  }
+
   void generateID() {
-    List<int> bytes = utf8.encode("$ip$port");
+    List<int> bytes = utf8.encode("$ip:$port");
     Digest digest = sha256.convert(bytes);
 
     _id = digest.toString();
@@ -58,7 +65,7 @@ class DomainRegistry {
         "https://shr-7dd12-default-rtdb.europe-west1.firebasedatabase.app/$id/.json"));
 
     if (r.body != null) {
-      port = int.parse((jsonDecode(r.body)["ip"]).toString());
+      port = int.parse(jsonDecode(r.body)["port"]);
     }
 
     return port;
