@@ -45,6 +45,58 @@ void main() async {
   runApp(const MyApp());
 }
 
+Future<List<List<int>>> partitionFile(int partitions, int fileSizeBytes,
+    List<int> fileBytes, bool encrypt) async {
+  int chunkSize = fileSizeBytes ~/ partitions;
+  int byteLastLocation = 0;
+  List<List<int>> bytes = [];
+  for (int i = 0; i < partitions; i++) {
+    Map<String, dynamic> args = {
+      "byteLastLocation": byteLastLocation,
+      "fileSizeBytes": fileSizeBytes,
+      "i": i,
+      "partitions": partitions,
+      "chunkSize": chunkSize,
+      "fileBytes": fileBytes
+    };
+    List<int> encodedFile = [];
+    List<int> fileByteData = await compute(_partitionFile, args);
+
+    //create file partitions
+    if (encrypt) {
+      encodedFile = GZipCodec().encode(fileByteData);
+    } else {
+      encodedFile = fileByteData;
+    }
+
+    byteLastLocation += chunkSize;
+
+    bytes.add(encodedFile);
+  }
+
+  return bytes;
+}
+
+List<int> combineShards(List<List<int>> shards, bool decrypt) {
+  List<int> fileData = [];
+
+  shards.forEach((data) {
+    if (decrypt) {
+      fileData.addAll(GZipCodec().decode(data));
+    } else {
+      fileData.addAll(data);
+    }
+  });
+
+  return fileData;
+}
+
+Future<File> saveFile(
+    List<int> fileByteData, String savePath, bool decrypt) async {
+  return (await File(savePath).writeAsBytes(fileByteData, mode: FileMode.write))
+      .create(recursive: true);
+}
+
 List<int> _partitionFile(Map<String, dynamic> args) {
   int byteLastLocation = args["byteLastLocation"];
   int fileSizeBytes = args["fileSizeBytes"];
@@ -55,13 +107,13 @@ List<int> _partitionFile(Map<String, dynamic> args) {
 
   List<int> encodedFile;
   if (currentPartition == partitions - 1) {
-    encodedFile = GZipCodec().encode((Uint8List.fromList(fileBytes))
+    encodedFile = (Uint8List.fromList(fileBytes))
         .getRange(byteLastLocation, fileSizeBytes)
-        .toList());
+        .toList();
   } else {
-    encodedFile = GZipCodec().encode((Uint8List.fromList(fileBytes))
+    encodedFile = (Uint8List.fromList(fileBytes))
         .getRange(byteLastLocation, byteLastLocation + chunkSize)
-        .toList());
+        .toList();
   }
 
   return encodedFile;
@@ -84,6 +136,13 @@ void _sendShardToNode(Map<String, dynamic> args) async {
     "http://$nodeAddr/send_shard",
     data: formData,
   );
+}
+
+List searchKeyword(String keyword, Trie trieData) {
+  List searchResults = [];
+  searchResults.addAll(trieData.find(keyword));
+
+  return searchResults;
 }
 
 class MyApp extends StatelessWidget {
@@ -238,7 +297,6 @@ class MyHomePageState extends State<MyHomePage> {
 
     List<List<int>> bytes = [];
     List<File> partitionFiles = [];
-    int chunkSize = fileSizeBytes ~/ partitions;
 
     bool canUpload = await showUploadDetailsDialog(fileName,
         Token.calculateFileCost(fileSizeBytes), fileSizeBytes, partitions);
@@ -246,31 +304,11 @@ class MyHomePageState extends State<MyHomePage> {
 
     //verify that user can upload file
     if (canUpload) {
-      ProgressDialog pd = ProgressDialog(context: context);
+      bytes = await partitionFile(partitions, fileSizeBytes, fileBytes, true);
 
-      int byteLastLocation = 0;
-      for (int i = 0; i < partitions; i++) {
-        pd.show(max: 100, msg: 'Creating shard ${i + 1} of $partitions...');
-
-        Map<String, dynamic> args = {
-          "byteLastLocation": byteLastLocation,
-          "file": file,
-          "fileSizeBytes": fileSizeBytes,
-          "i": i,
-          "partitions": partitions,
-          "chunkSize": chunkSize,
-          "fileBytes": fileBytes
-        };
-
-        //create file partitions
-        List<int> encodedFile = await compute(_partitionFile, args);
-        byteLastLocation += chunkSize;
+      for (int i = 0; i < bytes.length; i++) {
         File newFile = await File("$filePath$i").create();
-        await newFile.writeAsBytes(encodedFile);
-        partitionFiles.add(newFile);
-
-        bytes.add(encodedFile);
-        pd.close();
+        partitionFiles.add(await newFile.writeAsBytes(bytes[i]));
       }
 
       //Create list of nodes each shard can be sent to
@@ -336,13 +374,6 @@ class MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  void searchKeyword(String keyword) {
-    searchResults.clear();
-    setState(() {
-      searchResults.addAll(trie.find(keyword));
-    });
-  }
-
   bool verifyFileShard(List<String> fileHashes, List<int> byteData) {
     try {
       String hashByteData = createFileHash(byteData);
@@ -358,55 +389,78 @@ class MyHomePageState extends State<MyHomePage> {
     Block block = Block.fromJsonUB((await getBlockchain())["blocks"][fileHash]);
 
     String fileExtension = block.fileExtension;
-    var shardHosts = block.shardHosts;
+    Map<String, List<dynamic>> shardHosts = block.shardHosts;
     List<String> fileHashes = block.fileHashes;
 
     int shardsDownloaded = 0;
     bool badShard = false;
-    for (int i = 0; i < shardHosts.length; i++) {
-      String key = shardHosts.keys.elementAt(i);
-      List possibleNodes = shardHosts[key];
-      for (String nodeID in possibleNodes) {
-        String ip = await DomainRegistry.getNodeIP(nodeID);
-        int port = await DomainRegistry.getNodePort(nodeID);
+    List<List<int>> fileShardData = [];
 
+    toggleDownloadProgressVisibility(index);
+    await Future.forEach(shardHosts.keys, (key) async {
+      await Future.forEach(shardHosts[key], (nodeAddr) async {
         bool error = false;
 
-        Dio().post("http://$ip:$port/send_file",
-            data: {"fileName": "$fileName-$key"}).then((response) async {
+        try {
+          Response<dynamic> response = await Dio().post(
+              "http://$nodeAddr/send_file",
+              data: {"fileName": "$fileName-$key"});
           List<int> byteArray = List<int>.from(json.decode(response.data));
-          SharedPreferences prefs = await SharedPreferences.getInstance();
+          fileShardData.add(byteArray);
 
-          if (verifyFileShard(fileHashes, byteArray)) {
-            String savePath = prefs.getString("storage_location");
-            File("$savePath/$fileName.$fileExtension")
-                .writeAsBytes(GZipCodec().decode(byteArray),
-                    mode: FileMode.append)
-                .whenComplete(() {
-              shardsDownloaded += 1;
-              MessageHandler.showSuccessMessage(context,
-                  "Shard $shardsDownloaded of ${shardHosts.length} downloaded");
-            });
-          } else {
-            MessageHandler.showFailureMessage(
-                context, "Bad shard $fileName-$key from $nodeID ");
-            error = true;
-            badShard = true;
-          }
-        }).onError((error, stackTrace) {
-          error = true;
-        });
+          return;
+        } catch (e) {
+          print(e);
+        }
 
-        if (!error) {
+        return;
+      });
+    }).whenComplete(() async {
+      for (int i = 0; i < fileShardData.length; i++) {
+        var byteArray = fileShardData[i];
+        if (!verifyFileShard(fileHashes, byteArray)) {
+          MessageHandler.showFailureMessage(
+              context, "Bad shard $fileName-$i");
           return;
         }
       }
-      if (badShard) {
-        return;
-      }
-    }
 
-    toggleDownloadProgressVisibility(index);
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      print("no things");
+
+      String savePath = prefs.getString("storage_location");
+      List<int> fileByteData = combineShards(fileShardData, true);
+      saveFile(fileByteData, "$savePath/$fileName.$fileExtension", true)
+          .whenComplete(() {
+        shardsDownloaded += 1;
+        MessageHandler.showSuccessMessage(context,
+            "Shard $shardsDownloaded of ${shardHosts.length} downloaded");
+      });
+
+      toggleDownloadProgressVisibility(index);
+    });
+
+    // for (int i = 0; i < shardHosts.length; i++) {
+    //   String key = shardHosts.keys.elementAt(i);
+    //   List possibleNodes = shardHosts[key];
+
+    //   for (String nodeAddr in possibleNodes) {
+    //     bool error = false;
+
+    //     Dio().post("http://$nodeAddr/send_file",
+    //         data: {"fileName": "$fileName-$key"}).then((response) {
+    //       List<int> byteArray = List<int>.from(json.decode(response.data));
+    //       fileShardData.add(byteArray);
+    //       print(byteArray);
+    //     }).onError((error, stackTrace) {
+    //       error = true;
+    //     });
+
+    //     if (!error) {
+    //       break;
+    //     }
+    //   }
+    // }
   }
 
   Future<PlatformFile> _getPlatformFile() async {
@@ -1313,7 +1367,10 @@ class MyHomePageState extends State<MyHomePage> {
                                                 autoCompleteVisible = false;
                                               });
                                             } else {
-                                              searchKeyword(value);
+                                              setState(() {
+                                                searchResults =
+                                                    searchKeyword(value, trie);
+                                              });
                                               setState(() {
                                                 if (searchResults.isNotEmpty) {
                                                   autoCompleteVisible = true;
