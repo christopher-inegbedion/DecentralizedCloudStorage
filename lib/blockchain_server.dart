@@ -48,11 +48,17 @@ class BlockchainServer {
       prefs.setInt("port", port);
     }
 
-    return port;
+    return port ?? 1234;
   }
 
   static Future<String> getIP() async {
-    return await NetworkInfo().getWifiIP();
+    String ip;
+    try {
+      ip = await NetworkInfo().getWifiIP();
+    } catch (e) {
+      ip = "localhost";
+    }
+    return ip;
   }
 
   static void startServer(BuildContext context, MyHomePageState state) async {

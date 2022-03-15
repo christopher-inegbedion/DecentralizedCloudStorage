@@ -16,6 +16,7 @@ class KnownNodes {
     if (knownNodes.length == maximumKnownNodesAllowed) {
       throw Exception("Maximum known nodes capacity reached");
     }
+      knownNodes.add(newNode);
 
     try {
       String myIP = await NetworkInfo().getWifiIP();
@@ -35,13 +36,12 @@ class KnownNodes {
           return;
         }
       }
-
-      knownNodes.add(newNode);
-
       // print(knownNodes);
     } catch (e, stacktrace) {
       debugPrint(e.toString());
       debugPrint(stacktrace.toString());
     }
+
+
   }
 }

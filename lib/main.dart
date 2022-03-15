@@ -30,19 +30,63 @@ import 'utils.dart';
 
 final Token _token = Token.getInstance();
 DomainRegistry _domainRegistry;
+String ip;
+int port;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  ip = await BlockchainServer.getIP();
+  port = await BlockchainServer.getPort();
 
   UserSession.lockScreenSize();
   UserSession().getLastLoginTime();
   UserSession().logLoginTime();
 
   _token.deductTokens();
-  _domainRegistry = DomainRegistry(
-      await BlockchainServer.getIP(), await BlockchainServer.getPort());
+  const Map<String, dynamic> data = {
+    "blocks": {
+      "644cec9e0d3a8356689118c10364afc359bb5c1d4a7818acea545b4b85c3b146": {
+        "fileName": "buffalo",
+        "fileExtension": "py",
+        "fileSizeBytes": 708,
+        "shardByteHash":
+            "18dc54b865ee708d70457ab81c7ac02499191360559ebcdf141c5f24e8f353c3",
+        "shardsCreated": 1,
+        "event": "upload",
+        "eventCost": 6.59148e-7,
+        "shardHosts": {
+          "0": [
+            "3558ff052c1848e3e9c03f5d00dec23159dfbc81ccf88753ac513f3c2945e087"
+          ]
+        },
+        "timeCreated": 1647257861818,
+        "fileHost":
+            "3558ff0d52c1848e3e9c03f5d00dec23159dfbc81ccf88753ac513f3c2945e087",
+        "fileHashes": [
+          "18dc54b865ee708d70457ab81c7ac02499191360559ebcdf141c5f24e8f353c3"
+        ],
+        "salt": "V1KqKKmS7gPzxQ==",
+        "merkleRootHash":
+            "644cec9e0d3a8356689118c10364afc359bb5c1d4a7818acea545b4b85c3b146",
+        "prevBlockHash":
+            "8062d40935e0c4cc1ff94735417620dea098c90af96a72de271b84e5fdde1040"
+      }
+    }
+  };
+  runApp(const MyApp(
+    blockchainData: data,
+  ));
+}
 
-  runApp(const MyApp());
+bool verifyFileShard(List<String> fileHashes, List<int> byteData) {
+  try {
+    String hashByteData = createFileHash(byteData);
+
+    return fileHashes.contains(hashByteData);
+  } catch (e, trace) {
+    return false;
+  }
 }
 
 Future<List<List<int>>> partitionFile(int partitions, int fileSizeBytes,
@@ -138,15 +182,16 @@ void _sendShardToNode(Map<String, dynamic> args) async {
   );
 }
 
-List searchKeyword(String keyword, Trie trieData) {
-  List searchResults = [];
+List<String> searchKeyword(String keyword, Trie trieData) {
+  List<String> searchResults = [];
   searchResults.addAll(trieData.find(keyword));
 
   return searchResults;
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key key}) : super(key: key);
+  final Map<String, dynamic> blockchainData;
+  const MyApp({Key key, this.blockchainData}) : super(key: key);
 
   // This widget is the root of your application.
   @override
@@ -156,19 +201,26 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
           primarySwatch: Colors.blue,
           textTheme: GoogleFonts.robotoMonoTextTheme()),
-      home: MyHomePage(),
+      home: MyHomePage(
+        blockchainData: blockchainData,
+      ),
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
-  MyHomePage({Key key}) : super(key: key);
+  final Map<String, dynamic> blockchainData;
+  MyHomePage({Key key, this.blockchainData}) : super(key: key);
 
   @override
-  State<MyHomePage> createState() => MyHomePageState();
+  State<MyHomePage> createState() =>
+      MyHomePageState(blockchainData: blockchainData);
 }
 
 class MyHomePageState extends State<MyHomePage> {
+  final Map<String, dynamic> blockchainData;
+  MyHomePageState({this.blockchainData});
+
   GlobalKey<FormState> searchKey = GlobalKey();
   bool searchVisible = false;
   bool autoCompleteVisible = false;
@@ -182,9 +234,11 @@ class MyHomePageState extends State<MyHomePage> {
 
   void updateBlockchain() {}
 
-  Widget createTopNavBarButton(String text, IconData btnIcon, Function action) {
+  Widget createTopNavBarButton(String text, IconData btnIcon, Function action,
+      {Key key}) {
     return Container(
       child: TextButton(
+        key: key,
         onPressed: () {
           action();
         },
@@ -332,14 +386,25 @@ class MyHomePageState extends State<MyHomePage> {
         shardHosts[key] = value.toList();
       });
 
-      Block tempBlock =
-          await BlockChain.createNewBlock(bytes, platformFile, result, shardHosts);
+      Block tempBlock = await BlockChain.createUploadBlock(
+          bytes,
+          platformFile.extension,
+          getFileName(platformFile, result),
+          platformFile.size,
+          shardHosts);
 
       //send the block to all known nodes
       _sendBlocksToKnownNodes(tempBlock);
     }
 
     return true;
+  }
+
+  static String getFileName(PlatformFile file, FilePickerResult result) {
+    String fileExtension = file.extension;
+
+    return file.name
+        .substring(0, (file.name.length - 1) - fileExtension.length);
   }
 
   void _sendBlocksToKnownNodes(Block tempBlock) async {
@@ -372,16 +437,6 @@ class MyHomePageState extends State<MyHomePage> {
       searchVisible = !searchVisible;
       searchMode = !searchMode;
     });
-  }
-
-  bool verifyFileShard(List<String> fileHashes, List<int> byteData) {
-    try {
-      String hashByteData = createFileHash(byteData);
-
-      return fileHashes.contains(hashByteData);
-    } catch (e, trace) {
-      return false;
-    }
   }
 
   Future downloadFileFromBlockchain(
@@ -419,14 +474,12 @@ class MyHomePageState extends State<MyHomePage> {
       for (int i = 0; i < fileShardData.length; i++) {
         var byteArray = fileShardData[i];
         if (!verifyFileShard(fileHashes, byteArray)) {
-          MessageHandler.showFailureMessage(
-              context, "Bad shard $fileName-$i");
+          MessageHandler.showFailureMessage(context, "Bad shard $fileName-$i");
           return;
         }
       }
 
       SharedPreferences prefs = await SharedPreferences.getInstance();
-      print("no things");
 
       String savePath = prefs.getString("storage_location");
       List<int> fileByteData = combineShards(fileShardData, true);
@@ -553,7 +606,9 @@ class MyHomePageState extends State<MyHomePage> {
               children: [
                 Row(
                   children: [
-                    const Text("File name: "),
+                    Text("File name: ",
+                        key:
+                            ValueKey("${fileName}_download_descrtiption_name")),
                     Flexible(
                         child: SelectableText(
                       fileName,
@@ -781,6 +836,7 @@ class MyHomePageState extends State<MyHomePage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextField(
+                  key: const ValueKey("enter_ip_textfield"),
                   onChanged: (value) {},
                   keyboardType: TextInputType.number,
                   controller: _textIPController,
@@ -788,6 +844,7 @@ class MyHomePageState extends State<MyHomePage> {
                       const InputDecoration(hintText: "Enter IP address"),
                 ),
                 TextField(
+                  key: const ValueKey("enter_port_textfield"),
                   onChanged: (value) {},
                   keyboardType: TextInputType.number,
                   controller: _textPortController,
@@ -798,6 +855,7 @@ class MyHomePageState extends State<MyHomePage> {
             ),
             actions: <Widget>[
               FlatButton(
+                key: const ValueKey("add_self_btn"),
                 // color: Colors.green,
                 textColor: Colors.blue,
                 child: const Text(
@@ -813,6 +871,7 @@ class MyHomePageState extends State<MyHomePage> {
                 },
               ),
               FlatButton(
+                key: const ValueKey("confirm_add_node_btn"),
                 color: Colors.green,
                 textColor: Colors.white,
                 child: const Text('OK'),
@@ -841,9 +900,11 @@ class MyHomePageState extends State<MyHomePage> {
                         shrinkWrap: true,
                         itemCount: KnownNodes.knownNodes.length,
                         itemBuilder: (context, index) {
-                          return Text(KnownNodes.knownNodes
-                              .toList()[index]
-                              .getNodeAddress());
+                          return Text(
+                              KnownNodes.knownNodes
+                                  .toList()[index]
+                                  .getNodeAddress(),
+                              key: ValueKey("known_node_$index"));
                         }),
                   ),
             actions: <Widget>[
@@ -867,6 +928,7 @@ class MyHomePageState extends State<MyHomePage> {
           return AlertDialog(
             scrollable: true,
             content: SelectableText(prettyJson(blockchain, indent: 2),
+                key: const ValueKey("blockchain_text"),
                 style: const TextStyle(fontSize: 12)),
             actions: <Widget>[
               FlatButton(
@@ -1047,6 +1109,7 @@ class MyHomePageState extends State<MyHomePage> {
     }
 
     return ListView.builder(
+        key: const ValueKey("available_files_list"),
         physics: const BouncingScrollPhysics(),
         shrinkWrap: true,
         itemCount: fileHashes.length,
@@ -1060,6 +1123,7 @@ class MyHomePageState extends State<MyHomePage> {
           bool canFileBeDeleted = block['fileHost'] == _domainRegistry.getID();
 
           return InkWell(
+            key: Key("file_$index"),
             onTap: () async {
               bool canDownload = await showDownloadDetailsDialog(
                   fileName,
@@ -1177,6 +1241,7 @@ class MyHomePageState extends State<MyHomePage> {
                           Visibility(
                             visible: canFileBeDeleted,
                             child: IconButton(
+                              key: ValueKey("delete_file_$index"),
                               splashRadius: 10,
                               icon: const Icon(
                                 Icons.delete_outline,
@@ -1213,8 +1278,17 @@ class MyHomePageState extends State<MyHomePage> {
   }
 
   void _refreshBlockchain() async {
-    List<String> deletedFileHashes = await getDeletedFiles();
-    Map<String, dynamic> blockchain = await getBlockchain();
+    List<String> deletedFileHashes;
+    Map<String, dynamic> blockchain;
+
+    if (blockchainData != null) {
+      deletedFileHashes = await getDeletedFiles(blockchainData: blockchainData);
+      blockchain = blockchainData;
+    } else {
+      deletedFileHashes = await getDeletedFiles();
+      blockchain = await getBlockchain();
+    }
+
     fileHashes.clear();
 
     blockchain["blocks"].forEach((fileHash, key) {
@@ -1229,7 +1303,8 @@ class MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  Future<List<String>> getDeletedFiles() async {
+  Future<List<String>> getDeletedFiles(
+      {Map<String, dynamic> blockchainData}) async {
     List<String> filesDeleted = [];
     getBlockchain().whenComplete(() {
       List<Block> blocks = BlockChain.blocks;
@@ -1254,8 +1329,10 @@ class MyHomePageState extends State<MyHomePage> {
 
     BlockchainServer.startServer(context, this);
 
+    _domainRegistry = DomainRegistry(ip, port);
+
     requestStorageLocationDialog();
-    _domainRegistry.generateID();
+    _domainRegistry.generateID(context);
     UserSession.saveNewUser();
     _refreshBlockchain();
   }
@@ -1271,18 +1348,19 @@ class MyHomePageState extends State<MyHomePage> {
             Column(
               children: [
                 Container(
-                  margin: EdgeInsets.only(top: 10, bottom: 10),
+                  margin: const EdgeInsets.only(top: 10, bottom: 10),
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.start,
                       children: [
                         createTopNavBarButton(
-                            "SEARCH", Icons.search, toggleSeachVisibility),
+                            "SEARCH", Icons.search, toggleSeachVisibility,
+                            key: const ValueKey("Search button")),
                         createTopNavBarButton("UPLOAD", Icons.upload_file,
                             () async {
                           uploadFile();
-                        }),
+                        }, key: const ValueKey("upload_node_btn")),
                         createTopNavBarButton("ADD NODE", Icons.person_add,
                             () async {
                           List result = await showAddNodeDialog();
@@ -1293,11 +1371,11 @@ class MyHomePageState extends State<MyHomePage> {
                             MessageHandler.showSuccessMessage(
                                 context, "Node $ip:$port has been added");
                           });
-                        }),
+                        }, key: const ValueKey("add_node_btn")),
                         createTopNavBarButton("VIEW KNOWN NODES", Icons.person,
                             () {
                           showKnownNodesDialog();
-                        }),
+                        }, key: const ValueKey("view_known_nodes_btn")),
                         FutureBuilder(
                             future: BlockchainServer.getPort(),
                             builder: (context, snapshot) {
@@ -1361,6 +1439,7 @@ class MyHomePageState extends State<MyHomePage> {
                                         alignment: Alignment.centerLeft,
                                         margin: const EdgeInsets.only(left: 10),
                                         child: TextFormField(
+                                          key: const ValueKey("Search field"),
                                           onChanged: (value) {
                                             if (value.isEmpty) {
                                               setState(() {
@@ -1458,17 +1537,19 @@ class MyHomePageState extends State<MyHomePage> {
                     Container(height: 1, color: Colors.grey[100]),
                   ],
                 ),
-                FutureBuilder(
-                    future: getBlockchain(),
-                    builder: (context, snapshot) {
-                      if (snapshot.hasData) {
-                        Map<String, dynamic> data = snapshot.data;
+                blockchainData == null
+                    ? FutureBuilder(
+                        future: getBlockchain(),
+                        builder: (context, snapshot) {
+                          if (snapshot.hasData) {
+                            Map<String, dynamic> data = snapshot.data;
 
-                        return displayBlockchainFiles(data);
-                      } else {
-                        return const CircularProgressIndicator();
-                      }
-                    }),
+                            return displayBlockchainFiles(data);
+                          } else {
+                            return const CircularProgressIndicator();
+                          }
+                        })
+                    : displayBlockchainFiles(blockchainData),
                 Container(height: 100),
               ],
             ),
@@ -1482,6 +1563,7 @@ class MyHomePageState extends State<MyHomePage> {
                   children: [
                     Flexible(
                       child: Container(
+                          key: const ValueKey("user_id"),
                           decoration: BoxDecoration(
                               color: Colors.grey[400],
                               borderRadius: BorderRadius.circular(2)),
@@ -1497,6 +1579,12 @@ class MyHomePageState extends State<MyHomePage> {
                                   style: TextStyle(
                                       fontSize: 12, color: Colors.grey[700]),
                                 );
+                              }
+                              if (snapshot.hasError) {
+                                return Text(
+                                    "An error occured while generating your ID. Please try again later",
+                                    style: TextStyle(
+                                        fontSize: 12, color: Colors.red[700]));
                               } else {
                                 return const SizedBox(
                                     width: 12,
@@ -1528,10 +1616,10 @@ class MyHomePageState extends State<MyHomePage> {
                             child: createTopNavBarButton(
                                 "VIEW BLOCKCHAIN", Icons.list, () async {
                               Map<String, dynamic> blockchain =
-                                  await getBlockchain();
+                                  blockchainData ?? await getBlockchain();
 
                               printBlockchainDialog(blockchain);
-                            }),
+                            }, key: const ValueKey("view_blockchain_btn")),
                           ),
                         ])
                   ],

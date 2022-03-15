@@ -1,10 +1,12 @@
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:http/http.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:testwindowsapp/blockchain_server.dart';
 import 'package:http/http.dart' as http;
+import 'package:testwindowsapp/message_handler.dart';
 
 class DomainRegistry {
   String ip;
@@ -20,22 +22,27 @@ class DomainRegistry {
     return digest.toString();
   }
 
-  void generateID() {
+  void generateID(BuildContext context) {
     List<int> bytes = utf8.encode("$ip:$port");
     Digest digest = sha256.convert(bytes);
 
     _id = digest.toString();
-    saveID(_id, ip, port);
+    saveID(_id, ip, port, context);
   }
 
-  void saveID(String id, String ip, int port) async {
-    await http.put(
+  void saveID(String id, String ip, int port, BuildContext context) async {
+    try {
+await http.put(
         Uri.parse(
             "https://shr-7dd12-default-rtdb.europe-west1.firebasedatabase.app/$_id/.json"),
         body: jsonEncode({
           "ip": await BlockchainServer.getIP(),
           "port": (await BlockchainServer.getPort()).toString()
         }));
+    } catch (e){
+      MessageHandler.showFailureMessage(context, "An error occured while saving your ID. Try again later");
+    }
+    
   }
 
   String getID() {

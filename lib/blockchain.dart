@@ -23,16 +23,14 @@ class BlockChain {
   static List<Block> _temporaryBlockPool = [];
   static bool updatingBlockchain = false;
 
-  static Future<Block> createNewBlock(
-      List<List<int>> shardByteHash,
-      PlatformFile file,
-      FilePickerResult result,
+  static Future<Block> createUploadBlock(
+      List<List<int>> shardByteData,
+      String fileExtension,
+      String fileName,
+      int fileSizeBytes,
       Map<String, List> shardHosts) async {
     DomainRegistry _domainRegistry = DomainRegistry(
         await BlockchainServer.getIP(), await BlockchainServer.getPort());
-    String fileName = getFileName(file, result);
-    String fileExtension = file.extension;
-    int fileSizeBytes = file.size;
     double eventCost = Token.calculateFileCost(fileSizeBytes);
     List<String> fileHashes = [];
 
@@ -41,7 +39,7 @@ class BlockChain {
     String merkleHashSalt = Block.getRandString();
     String shardByteHashString = "";
 
-    for (List<int> byteData in shardByteHash) {
+    for (List<int> byteData in shardByteData) {
       String hashByteData = createFileHash(byteData);
 
       shardByteHashString += hashByteData;
@@ -130,12 +128,36 @@ class BlockChain {
     }
   }
 
-  static Future<Map<String, dynamic>> loadBlockchain() async {
+  static Future<Map<String, dynamic>> loadBlockchain(
+      {Map<String, dynamic> data}) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
 
-    if (prefs.getString("blockchain_data") != null) {
-      Map<String, dynamic> blockchainData = Map<String, dynamic>.from(
-          jsonDecode(prefs.getString("blockchain_data")));
+    if (data == null) {
+      if (prefs.getString("blockchain_data") != null) {
+        Map<String, dynamic> blockchainData = Map<String, dynamic>.from(
+            jsonDecode(prefs.getString("blockchain_data")));
+
+        List<Block> i = [];
+        Map<String, dynamic> blockData = blockchainData["blocks"];
+        for (int k = 0; k < blockData.length; k++) {
+          Map<String, dynamic> block = blockData[blockData.keys.elementAt(k)];
+          if (block["event"] == Block.uploadEvent) {
+            Block j = Block.fromJsonUB(block);
+            i.add(j);
+          } else if (block["event"] == Block.deleteEvent) {
+            Block j = Block.fromJsonDB(block);
+            i.add(j);
+          }
+        }
+
+        blocks = i;
+        return blockchainData;
+      } else {
+        blocks = [Block.genesis()];
+        return toJson();
+      }
+    } else {
+      Map<String, dynamic> blockchainData = data;
 
       List<Block> i = [];
       Map<String, dynamic> blockData = blockchainData["blocks"];
@@ -152,9 +174,6 @@ class BlockChain {
 
       blocks = i;
       return blockchainData;
-    } else {
-      blocks = [Block.genesis()];
-      return toJson();
     }
   }
 

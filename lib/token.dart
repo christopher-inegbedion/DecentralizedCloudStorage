@@ -27,7 +27,7 @@ class Token {
     UserSession().saveTokens(availableTokens);
   }
 
-  void incrementTokens(int minsElapsed) async {
+  Future<double> incrementTokens(int minsElapsed) async {
     double val = (double.parse(_tokenFormula(minsElapsed).toStringAsFixed(3)) -
             availableTokens) +
         availableTokens;
@@ -42,6 +42,8 @@ class Token {
     }
 
     UserSession().saveTokens(availableTokens);
+
+    return val;
   }
 
   Future deductTokens() async {

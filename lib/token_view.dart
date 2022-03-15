@@ -16,13 +16,14 @@ class AvailableTokensView extends StatefulWidget {
 
 class AvailableTokensViewState extends State<AvailableTokensView> {
   Token token;
+  Timer _timer;
 
   AvailableTokensViewState(this.token);
 
   void _updateTokens() async {
     int minsElapsed = 0;
     if (mounted) {
-      Timer.periodic(const Duration(seconds: 1), (timer) {
+      _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
         minsElapsed += 10;
         setState(() {
           token.incrementTokens(minsElapsed);
@@ -41,6 +42,13 @@ class AvailableTokensViewState extends State<AvailableTokensView> {
     }).whenComplete(() {
       _updateTokens();
     });
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+    _timer.cancel();
+    
   }
 
   @override

@@ -10,10 +10,10 @@ String convertTimestampToDate(int value) {
   return d12;
 }
 
-String createFileHash(List<int> byteData) {
+String createFileHash(List<int> byteData, {bool decrypt=true}) {
   try {
-    List<int> gzipData = GZipCodec().decode(byteData);
-    var digest = crypto.sha256.convert(gzipData);
+    List<int> data = decrypt ? GZipCodec().decode(byteData) : byteData;
+    var digest = crypto.sha256.convert(data);
     return digest.toString();
   } catch (e, trace) {
     return "";
