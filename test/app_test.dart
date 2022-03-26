@@ -3,15 +3,20 @@ import 'dart:io';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:pretty_json/pretty_json.dart';
-import 'package:testwindowsapp/blockchain.dart';
+import 'package:testwindowsapp/blockchain/blockchain.dart';
+import 'package:testwindowsapp/domain_regisrty.dart';
+import 'package:testwindowsapp/file_combiner.dart';
+import 'package:testwindowsapp/file_handler.dart';
+import 'package:testwindowsapp/file_partitioner.dart';
 import 'package:testwindowsapp/main.dart' as app;
 import 'package:testwindowsapp/main.dart';
 import 'package:testwindowsapp/token.dart';
 import 'package:testwindowsapp/utils.dart';
 
 void main() {
-  // TestWidgetsFlutterBinding.ensureInitialized();
+  TestWidgetsFlutterBinding.ensureInitialized();
 
   const Map<String, dynamic> data = {
     "blocks": {
@@ -36,7 +41,7 @@ void main() {
           "18dc54b865ee708d70457ab81c7ac02499191360559ebcdf141c5f24e8f353c3"
         ],
         "salt": "V1KqKKmS7gPzxQ==",
-        "merkleRootHash":
+        "hash":
             "644cec9e0d3a8356689118c10364afc359bb5c1d4a7818acea545b4b85c3b146",
         "prevBlockHash":
             "8062d40935e0c4cc1ff94735417620dea098c90af96a72de271b84e5fdde1040"
@@ -117,19 +122,20 @@ void main() {
       //the presence of the file picker, which is needed to perform this test
     });
 
-    testWidgets("VIEW BLOCKCHAIN button is clicked", (WidgetTester tester) async {
-    await tester.pumpWidget(const app.MyApp(
-      blockchainData: data,
-    ));
-    await tester.pump();
-    await tester.tap(find.byKey(const ValueKey("Search button")));
-    await tester.pump();
-    await tester.tap(find.byKey(const ValueKey("view_blockchain_btn")));
-    await tester.pump();
-    final blockchainTextFinder = find.text(prettyJson(data));
+    testWidgets("VIEW BLOCKCHAIN button is clicked",
+        (WidgetTester tester) async {
+      await tester.pumpWidget(const app.MyApp(
+        blockchainData: data,
+      ));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey("Search button")));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey("view_blockchain_btn")));
+      await tester.pump();
+      final blockchainTextFinder = find.text(prettyJson(data));
 
-    expect(blockchainTextFinder, findsOneWidget);
-  });
+      expect(blockchainTextFinder, findsOneWidget);
+    });
 
     testWidgets("Delete button visible for only files uploaded by node",
         (WidgetTester tester) async {
@@ -168,6 +174,12 @@ void main() {
       expect(tokensExpected3, 1);
     });
 
+    test("A node does not have sufficient tokens", () async {
+      Token.getInstance().availableTokens = 1;
+
+      expect(canActionComplete(1.1), false);
+    });
+
     test("A user has downloaded/uploaded a file", () async {
       //Uploading a file
       //The flutter framework does not provide a mechanism to control the file manager so as to be
@@ -177,6 +189,10 @@ void main() {
       //Downloading a file would require at least 2 instances of the application running, which is
       //not possible as of the time at which this test was written (14/03/2022)
     });
+
+    test("User ID function works properly", () async {
+      expect(DomainRegistry.generateNodeID("127.0.0.1:1234"), "a6db929d4d87c3061917e581f70a66986b54147ac53477b8fcc5fe98ab4f0e83");
+    });
   });
 
   group("Sprint 3", () {
@@ -185,10 +201,10 @@ void main() {
       List<int> byteData = utf8.encode(testData);
       int partitions = 8;
 
-      List<List<int>> shards =
-          await partitionFile(partitions, byteData.length, byteData, false);
+      List<List<int>> shards = await FilePartioner.partitionFile(
+          partitions, byteData.length, byteData, false);
 
-      List<int> fileData = combineShards(shards, false);
+      List<int> fileData = FileCombiner.combineShards(shards, false);
       expect(fileData, byteData);
     });
 
@@ -197,8 +213,8 @@ void main() {
       List<int> byteData = utf8.encode(testData);
       int partitions = 8;
 
-      List<List<int>> ptions =
-          await partitionFile(partitions, byteData.length, byteData, false);
+      List<List<int>> ptions = await FilePartioner.partitionFile(
+          partitions, byteData.length, byteData, false);
 
       expect(partitions, ptions.length);
 
@@ -219,66 +235,28 @@ void main() {
       List<int> byteData = utf8.encode(testData);
       int partitions = 8;
 
-      List<List<int>> ptions =
-          await partitionFile(partitions, byteData.length, byteData, false);
+      List<List<int>> ptions = await FilePartioner.partitionFile(
+          partitions, byteData.length, byteData, false);
 
       List<String> fileHashes = [];
-      ptions.forEach((shard) {
+      for (var shard in ptions) {
         fileHashes.add(createFileHash(shard, decrypt: false));
-      });
+      }
 
       ptions[0][0] = 5;
       bool isShardValid = app.verifyFileShard(fileHashes, ptions[0]);
-      print(GZipCodec().decode([100]));
 
       expect(isShardValid, false);
     });
 
     test("Creating a new block", () async {
-      Map<String, dynamic> dataToCompare = {
-        "fileName": "File name",
-        "fileExtension": ".test",
-        "fileSizeBytes": 1234,
-        "shardByteHash":
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "shardsCreated": 1,
-        "event": "upload",
-        "eventCost": 0.0000011488540000000001,
-        "shardHosts": {
-          "0": [
-            "c0365b5a3867cc382f6854fdc4f6f10c7857275c8b1e525beb8c399f80949be5",
-            "a0fa7aed11f846f75b113e58d522ebf657be31469a124f9ee2e9109867400abf"
-          ]
-        },
-        "timeCreated": 1647293137374,
-        "fileHost": null,
-        "fileHashes": [
-          "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-        ],
-        "salt": "HPqJUfaiiL5LBQ==",
-        "merkleRootHash": null,
-        "prevBlockHash": ""
-      };
-
       String testData = "ffffffff";
       List<int> byteData = utf8.encode(testData);
       int partitions = 8;
 
-      List<List<int>> ptions =
-          await partitionFile(partitions, byteData.length, byteData, false);
+      List<List<int>> ptions = await FilePartioner.partitionFile(
+          partitions, byteData.length, byteData, false);
 
-      List<String> fileHashes = [];
-      ptions.forEach((shard) {
-        fileHashes.add(createFileHash(shard, decrypt: false));
-      });
- 
       String fileExtension = ".test";
       String fileName = "File name";
       int fileSizeBytes = 1234;
@@ -288,10 +266,19 @@ void main() {
 
       Block block = await BlockChain.createUploadBlock(
           ptions, fileExtension, fileName, fileSizeBytes, shardHosts);
-          
+
       expect(block.fileName, fileName);
       expect(block.fileExtension, fileExtension);
       expect(block.fileSizeBytes, fileSizeBytes);
+    });
+
+    test("Saving a file", () async {
+      String fileName = "new_file";
+      String savePath =
+          "/Users/chrisinegbedion/Downloads/"; //Important: Change this path to a path on your device
+      bool result =
+          await FileHandler.saveFile([123], savePath + fileName, false);
+      expect(result, true);
     });
   });
 }

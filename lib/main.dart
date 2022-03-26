@@ -15,8 +15,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sn_progress_dialog/progress_dialog.dart';
-import 'package:testwindowsapp/blockchain.dart';
-import 'package:testwindowsapp/blockchain_server.dart';
+import 'package:testwindowsapp/blockchain/blockchain.dart';
+import 'package:testwindowsapp/server.dart';
 import 'package:testwindowsapp/domain_regisrty.dart';
 import 'package:testwindowsapp/known_nodes.dart';
 import 'package:testwindowsapp/message_handler.dart';
@@ -25,6 +25,9 @@ import 'package:testwindowsapp/token.dart';
 import 'package:testwindowsapp/token_view.dart';
 import 'package:retrieval/trie.dart';
 import 'constants.dart';
+import 'file_combiner.dart';
+import 'file_handler.dart';
+import 'file_partitioner.dart';
 import 'user_session.dart';
 import 'utils.dart';
 
@@ -44,39 +47,8 @@ void main() async {
   UserSession().logLoginTime();
 
   _token.deductTokens();
-  const Map<String, dynamic> data = {
-    "blocks": {
-      "644cec9e0d3a8356689118c10364afc359bb5c1d4a7818acea545b4b85c3b146": {
-        "fileName": "buffalo",
-        "fileExtension": "py",
-        "fileSizeBytes": 708,
-        "shardByteHash":
-            "18dc54b865ee708d70457ab81c7ac02499191360559ebcdf141c5f24e8f353c3",
-        "shardsCreated": 1,
-        "event": "upload",
-        "eventCost": 6.59148e-7,
-        "shardHosts": {
-          "0": [
-            "3558ff052c1848e3e9c03f5d00dec23159dfbc81ccf88753ac513f3c2945e087"
-          ]
-        },
-        "timeCreated": 1647257861818,
-        "fileHost":
-            "3558ff0d52c1848e3e9c03f5d00dec23159dfbc81ccf88753ac513f3c2945e087",
-        "fileHashes": [
-          "18dc54b865ee708d70457ab81c7ac02499191360559ebcdf141c5f24e8f353c3"
-        ],
-        "salt": "V1KqKKmS7gPzxQ==",
-        "merkleRootHash":
-            "644cec9e0d3a8356689118c10364afc359bb5c1d4a7818acea545b4b85c3b146",
-        "prevBlockHash":
-            "8062d40935e0c4cc1ff94735417620dea098c90af96a72de271b84e5fdde1040"
-      }
-    }
-  };
-  runApp(const MyApp(
-    blockchainData: data,
-  ));
+
+  runApp(const MyApp());
 }
 
 bool verifyFileShard(List<String> fileHashes, List<int> byteData) {
@@ -87,80 +59,6 @@ bool verifyFileShard(List<String> fileHashes, List<int> byteData) {
   } catch (e, trace) {
     return false;
   }
-}
-
-Future<List<List<int>>> partitionFile(int partitions, int fileSizeBytes,
-    List<int> fileBytes, bool encrypt) async {
-  int chunkSize = fileSizeBytes ~/ partitions;
-  int byteLastLocation = 0;
-  List<List<int>> bytes = [];
-  for (int i = 0; i < partitions; i++) {
-    Map<String, dynamic> args = {
-      "byteLastLocation": byteLastLocation,
-      "fileSizeBytes": fileSizeBytes,
-      "i": i,
-      "partitions": partitions,
-      "chunkSize": chunkSize,
-      "fileBytes": fileBytes
-    };
-    List<int> encodedFile = [];
-    List<int> fileByteData = await compute(_partitionFile, args);
-
-    //create file partitions
-    if (encrypt) {
-      encodedFile = GZipCodec().encode(fileByteData);
-    } else {
-      encodedFile = fileByteData;
-    }
-
-    byteLastLocation += chunkSize;
-
-    bytes.add(encodedFile);
-  }
-
-  return bytes;
-}
-
-List<int> combineShards(List<List<int>> shards, bool decrypt) {
-  List<int> fileData = [];
-
-  shards.forEach((data) {
-    if (decrypt) {
-      fileData.addAll(GZipCodec().decode(data));
-    } else {
-      fileData.addAll(data);
-    }
-  });
-
-  return fileData;
-}
-
-Future<File> saveFile(
-    List<int> fileByteData, String savePath, bool decrypt) async {
-  return (await File(savePath).writeAsBytes(fileByteData, mode: FileMode.write))
-      .create(recursive: true);
-}
-
-List<int> _partitionFile(Map<String, dynamic> args) {
-  int byteLastLocation = args["byteLastLocation"];
-  int fileSizeBytes = args["fileSizeBytes"];
-  int currentPartition = args["i"];
-  int partitions = args["partitions"];
-  int chunkSize = args["chunkSize"];
-  List<int> fileBytes = args["fileBytes"];
-
-  List<int> encodedFile;
-  if (currentPartition == partitions - 1) {
-    encodedFile = (Uint8List.fromList(fileBytes))
-        .getRange(byteLastLocation, fileSizeBytes)
-        .toList();
-  } else {
-    encodedFile = (Uint8List.fromList(fileBytes))
-        .getRange(byteLastLocation, byteLastLocation + chunkSize)
-        .toList();
-  }
-
-  return encodedFile;
 }
 
 void _sendShardToNode(Map<String, dynamic> args) async {
@@ -193,7 +91,6 @@ class MyApp extends StatelessWidget {
   final Map<String, dynamic> blockchainData;
   const MyApp({Key key, this.blockchainData}) : super(key: key);
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -210,7 +107,7 @@ class MyApp extends StatelessWidget {
 
 class MyHomePage extends StatefulWidget {
   final Map<String, dynamic> blockchainData;
-  MyHomePage({Key key, this.blockchainData}) : super(key: key);
+  const MyHomePage({Key key, this.blockchainData}) : super(key: key);
 
   @override
   State<MyHomePage> createState() =>
@@ -224,43 +121,38 @@ class MyHomePageState extends State<MyHomePage> {
   GlobalKey<FormState> searchKey = GlobalKey();
   bool searchVisible = false;
   bool autoCompleteVisible = false;
-  bool searchMode = false;
   Map<String, dynamic> fileHashes = {};
   List<int> filesDownloading = [];
   List<String> searchResults = [];
   BlockchainServer server;
   final trie = Trie();
   int depth = 2;
-
-  void updateBlockchain() {}
+  bool usingID = false;
 
   Widget createTopNavBarButton(String text, IconData btnIcon, Function action,
       {Key key}) {
-    return Container(
-      child: TextButton(
-        key: key,
-        onPressed: () {
-          action();
-        },
-        child: Container(
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(5)),
-            padding:
-                const EdgeInsets.only(left: 5, right: 5, top: 3, bottom: 3),
-            child: Row(
-              children: [
-                Icon(
-                  btnIcon,
-                  size: 13,
-                ),
-                Container(
-                    margin: const EdgeInsets.only(left: 5),
-                    child: Text(
-                      text,
-                      style: const TextStyle(fontSize: 12),
-                    )),
-              ],
-            )),
-      ),
+    return TextButton(
+      key: key,
+      onPressed: () {
+        action();
+      },
+      child: Container(
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(5)),
+          padding: const EdgeInsets.only(left: 5, right: 5, top: 3, bottom: 3),
+          child: Row(
+            children: [
+              Icon(
+                btnIcon,
+                size: 13,
+              ),
+              Container(
+                  margin: const EdgeInsets.only(left: 5),
+                  child: Text(
+                    text,
+                    style: const TextStyle(fontSize: 12),
+                  )),
+            ],
+          )),
     );
   }
 
@@ -272,30 +164,6 @@ class MyHomePageState extends State<MyHomePage> {
         filesDownloading.add(index);
       }
     });
-  }
-
-  Future<Map<String, Set>> getKnownNodesForNodes(
-      List<Node> nodesReceiving) async {
-    String myAddress = await Node.getMyAddress();
-    Map<String, Set> backupNodes = {};
-
-    for (int i = 0; i < nodesReceiving.length; i++) {
-      var r = await Dio().post(
-        "http://${nodesReceiving[0].getNodeAddress()}/send_known_nodes",
-        data: {
-          "depth": depth.toString(),
-          "nodes": [],
-          "origin": myAddress,
-          "sender": myAddress
-        },
-      );
-
-      backupNodes[i.toString()] = {...jsonDecode(r.data)};
-      backupNodes[i.toString()]
-          .add(KnownNodes.knownNodes.toList()[i].getNodeAddress());
-    }
-
-    return backupNodes;
   }
 
   List<Node> getNodesReceivingShard(int n) {
@@ -313,14 +181,27 @@ class MyHomePageState extends State<MyHomePage> {
   }
 
   int _getNumberOfPartitionsForFile(int fileSizeBytes) {
+    int maximumShardSizeExceptLastShard =
+        200; //All shards except the last shard are capped at 200MB
     double fileSizeMBytes = fileSizeBytes / (1024 * 1024);
-    if (fileSizeMBytes <= 200) {
+    if (fileSizeMBytes <= maximumShardSizeExceptLastShard) {
       return 1;
     } else if (fileSizeMBytes > 1800) {
-      return KnownNodes.maximumKnownNodesAllowed;
+      return Constants.maxNumOfKnownNodes;
     } else {
-      return (fileSizeMBytes / 200).floor();
+      return (fileSizeMBytes / maximumShardSizeExceptLastShard).floor();
     }
+  }
+
+  List<Node> getLiveKnownNodes() {
+    List<Node> liveNodes = [];
+    KnownNodes.knownNodes.forEach((node) async {
+      if (await node.isLive()) {
+        liveNodes.add(node);
+      }
+    });
+
+    return liveNodes;
   }
 
   Future<bool> uploadFile() async {
@@ -358,7 +239,8 @@ class MyHomePageState extends State<MyHomePage> {
 
     //verify that user can upload file
     if (canUpload) {
-      bytes = await partitionFile(partitions, fileSizeBytes, fileBytes, true);
+      bytes = await FilePartioner.partitionFile(
+          partitions, fileSizeBytes, fileBytes, true);
 
       for (int i = 0; i < bytes.length; i++) {
         File newFile = await File("$filePath$i").create();
@@ -366,13 +248,21 @@ class MyHomePageState extends State<MyHomePage> {
       }
 
       //Create list of nodes each shard can be sent to
-      Map<String, Set> nodesReceiving =
-          await getKnownNodesForNodes(getNodesReceivingShard(partitions));
+      Map<String, Set> nodesReceiving = await BlockchainServer.getBackupNodes(
+          getNodesReceivingShard(partitions), depth);
 
+      //get the nodes that are online
+      List<Node> liveNodes = getLiveKnownNodes();
+
+      if (partitions > liveNodes.length) {
+        MessageHandler.showFailureMessage(
+            context, "Not enough known nodes are online");
+        return false;
+      }
       //send shard byte data to selected known nodes
       for (int i = 0; i < partitions; i++) {
         for (String receivingNodeAddr in nodesReceiving[i.toString()]) {
-          sendShard(receivingNodeAddr, "$fileName-$i", depth,
+          _sendShard(receivingNodeAddr, "$fileName-$i", depth,
                   f: partitionFiles[i])
               .catchError((e, st) {
             MessageHandler.showFailureMessage(context, e.toString());
@@ -394,40 +284,10 @@ class MyHomePageState extends State<MyHomePage> {
           shardHosts);
 
       //send the block to all known nodes
-      _sendBlocksToKnownNodes(tempBlock);
+      BlockchainServer.sendBlocksToKnownNodes(tempBlock);
     }
 
     return true;
-  }
-
-  static String getFileName(PlatformFile file, FilePickerResult result) {
-    String fileExtension = file.extension;
-
-    return file.name
-        .substring(0, (file.name.length - 1) - fileExtension.length);
-  }
-
-  void _sendBlocksToKnownNodes(Block tempBlock) async {
-    String myIP = await NetworkInfo().getWifiIP();
-
-    Set<Node> nodesReceivingShard = {};
-    int myPort = await BlockchainServer.getPort();
-
-    Node self = Node(myIP, myPort);
-
-    nodesReceivingShard.add(self);
-
-    for (int i = 0; i < KnownNodes.knownNodes.length; i++) {
-      if ((KnownNodes.knownNodes.toList()[i]).getNodeAddress() !=
-          self.getNodeAddress()) {
-        nodesReceivingShard.add(KnownNodes.knownNodes.toList()[i]);
-      }
-    }
-
-    for (Node node in nodesReceivingShard) {
-      print(node.port);
-      BlockChain.sendBlockchain(node.getNodeAddress(), tempBlock);
-    }
   }
 
   void toggleSeachVisibility() {
@@ -435,27 +295,24 @@ class MyHomePageState extends State<MyHomePage> {
 
     setState(() {
       searchVisible = !searchVisible;
-      searchMode = !searchMode;
     });
   }
 
   Future downloadFileFromBlockchain(
       String fileHash, String fileName, int index) async {
-    Block block = Block.fromJsonUB((await getBlockchain())["blocks"][fileHash]);
+    Block block = Block.fromJsonUB(
+        (await BlockChain.loadBlockchain())["blocks"][fileHash]);
 
     String fileExtension = block.fileExtension;
     Map<String, List<dynamic>> shardHosts = block.shardHosts;
     List<String> fileHashes = block.fileHashes;
 
     int shardsDownloaded = 0;
-    bool badShard = false;
     List<List<int>> fileShardData = [];
 
     toggleDownloadProgressVisibility(index);
     await Future.forEach(shardHosts.keys, (key) async {
       await Future.forEach(shardHosts[key], (nodeAddr) async {
-        bool error = false;
-
         try {
           Response<dynamic> response = await Dio().post(
               "http://$nodeAddr/send_file",
@@ -482,58 +339,31 @@ class MyHomePageState extends State<MyHomePage> {
       SharedPreferences prefs = await SharedPreferences.getInstance();
 
       String savePath = prefs.getString("storage_location");
-      List<int> fileByteData = combineShards(fileShardData, true);
-      saveFile(fileByteData, "$savePath/$fileName.$fileExtension", true)
+      List<int> fileByteData = FileCombiner.combineShards(fileShardData, true);
+      FileHandler.saveFile(
+              fileByteData, "$savePath/$fileName.$fileExtension", true)
           .whenComplete(() {
         shardsDownloaded += 1;
         MessageHandler.showSuccessMessage(context,
             "Shard $shardsDownloaded of ${shardHosts.length} downloaded");
+      }).onError((error, stackTrace) {
+        MessageHandler.showSuccessMessage(
+            context, "An error occured downloading a shard");
+
+        return true;
       });
 
       toggleDownloadProgressVisibility(index);
     });
-
-    // for (int i = 0; i < shardHosts.length; i++) {
-    //   String key = shardHosts.keys.elementAt(i);
-    //   List possibleNodes = shardHosts[key];
-
-    //   for (String nodeAddr in possibleNodes) {
-    //     bool error = false;
-
-    //     Dio().post("http://$nodeAddr/send_file",
-    //         data: {"fileName": "$fileName-$key"}).then((response) {
-    //       List<int> byteArray = List<int>.from(json.decode(response.data));
-    //       fileShardData.add(byteArray);
-    //       print(byteArray);
-    //     }).onError((error, stackTrace) {
-    //       error = true;
-    //     });
-
-    //     if (!error) {
-    //       break;
-    //     }
-    //   }
-    // }
   }
 
-  Future<PlatformFile> _getPlatformFile() async {
-    FilePickerResult result = await FilePicker.platform.pickFiles();
-
-    return result.files.single;
-  }
-
-  Future<File> selectFile() async {
-    PlatformFile fileData = await _getPlatformFile();
-    return File((fileData.path).toString());
-  }
-
-  Future sendShard(String receipientAddr, String fileName, int depth,
+  Future _sendShard(String receipientAddr, String fileName, int depth,
       {File f}) async {
     if (await BlockchainServer.isNodeLive("http://$receipientAddr")) {
       File file = f;
 
       if (file == null) {
-        PlatformFile _platformFile = await _getPlatformFile();
+        PlatformFile _platformFile = await FileHandler.getPlatformFile();
         file = File(_platformFile.path);
       }
 
@@ -570,27 +400,42 @@ class MyHomePageState extends State<MyHomePage> {
   }
 
   void deleteFile(String fileName, String fileHash) async {
-    Block block = Block.fromJsonUB((await getBlockchain())["blocks"][fileHash]);
+    Block block = Block.fromJsonUB(
+        (await BlockChain.loadBlockchain())["blocks"][fileHash]);
 
     if (block.fileHost != _domainRegistry.getID()) {
       throw Exception("Permission denied. File not uploaded by you");
     }
 
-    String blockHash = block.merkleTreeRootHash;
+    String blockHash = block.hash;
     Block deleteBlock = BlockChain.createDeleteBlock(
         fileName, blockHash, block.shardByteHash, _domainRegistry.getID());
 
-    _sendBlocksToKnownNodes(deleteBlock);
+    BlockchainServer.sendBlocksToKnownNodes(deleteBlock);
+  }
+
+  void addKnownNode(String ip, int port) {
+    KnownNodes.addNode(ip, port).whenComplete(() {
+      MessageHandler.showSuccessMessage(
+          context, "Node $ip:$port has been added");
+    });
+  }
+
+  void initKnownNodes() async {
+    Set<String> nodesFromDB =
+        await DomainRegistry.getNodesFromDatabase(Constants.maxNumOfKnownNodes);
+    nodesFromDB.forEach((element) async {
+      String ip = await DomainRegistry.getNodeIP(element);
+      int port = await DomainRegistry.getNodePort(element);
+
+      addKnownNode(ip, port);
+    });
   }
 
   //Dialog methods
   Future showDownloadDetailsDialog(String fileName, double cost,
       int fileSizeBytes, int shardsCreated) async {
-    double availableTokes = _token.availableTokens;
-    bool canDownload = false;
-    if (availableTokes >= cost) {
-      canDownload = true;
-    }
+    bool canDownload = canActionComplete(cost);
 
     return showDialog(
         barrierDismissible: false,
@@ -675,11 +520,8 @@ class MyHomePageState extends State<MyHomePage> {
 
   Future showUploadDetailsDialog(String fileName, double cost,
       int fileSizeBytes, int shardsCreated) async {
-    double availableTokes = _token.availableTokens;
-    bool canUpload = false;
-    if (availableTokes >= cost) {
-      canUpload = true;
-    }
+    bool canUpload = canActionComplete(cost);
+
     return showDialog(
         barrierDismissible: false,
         context: context,
@@ -823,65 +665,125 @@ class MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  Future<List> showAddNodeDialog() {
+  Future showAddNodeDialog() {
+    TextEditingController _textIDController = TextEditingController();
     TextEditingController _textIPController = TextEditingController();
     TextEditingController _textPortController = TextEditingController();
+    String nodeErrorMsg = "";
 
     return showDialog(
         context: context,
         builder: (context) {
-          return AlertDialog(
-            title: const Text('New node'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  key: const ValueKey("enter_ip_textfield"),
-                  onChanged: (value) {},
-                  keyboardType: TextInputType.number,
-                  controller: _textIPController,
-                  decoration:
-                      const InputDecoration(hintText: "Enter IP address"),
+          return StatefulBuilder(
+              builder: (BuildContext context, StateSetter setState) {
+            return AlertDialog(
+              title: const Text('New node'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: !usingID
+                    ? [
+                        TextField(
+                          key: const ValueKey("enter_ip_textfield"),
+                          onChanged: (value) {},
+                          keyboardType: TextInputType.number,
+                          controller: _textIPController,
+                          decoration: const InputDecoration(
+                              hintText: "Enter IP address"),
+                        ),
+                        TextField(
+                          key: const ValueKey("enter_port_textfield"),
+                          onChanged: (value) {},
+                          keyboardType: TextInputType.number,
+                          controller: _textPortController,
+                          decoration: const InputDecoration(
+                              hintText: "Enter port number"),
+                        ),
+                      ]
+                    : [
+                        TextField(
+                          key: const ValueKey("enter_id_textfield"),
+                          onChanged: (value) {},
+                          controller: _textIDController,
+                          decoration:
+                              const InputDecoration(hintText: "Enter ID"),
+                        ),
+                        Container(
+                            child: Text(nodeErrorMsg,
+                                style:
+                                    TextStyle(color: Colors.red, fontSize: 12)),
+                            margin: EdgeInsets.only(top: 10))
+                      ],
+              ),
+              actions: <Widget>[
+                FlatButton(
+                  key: ValueKey(usingID ? "using_id_btn" : "using_port_btn"),
+                  // color: Colors.green,
+                  textColor: Colors.blue,
+                  child: Text(
+                    usingID ? 'Use IP/port' : "Use ID",
+                    style: const TextStyle(
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      usingID = !usingID;
+                    });
+                  },
                 ),
-                TextField(
-                  key: const ValueKey("enter_port_textfield"),
-                  onChanged: (value) {},
-                  keyboardType: TextInputType.number,
-                  controller: _textPortController,
-                  decoration:
-                      const InputDecoration(hintText: "Enter port number"),
+                FlatButton(
+                  key: const ValueKey("add_self_btn"),
+                  // color: Colors.green,
+                  textColor: Colors.blue,
+                  child: const Text(
+                    'Add self',
+                    style: TextStyle(
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                  onPressed: () async {
+                    if (usingID) {
+                      _textIDController.text = _domainRegistry.getID();
+                    } else {
+                      _textIPController.text = await NetworkInfo().getWifiIP();
+                      _textPortController.text =
+                          (await BlockchainServer.getPort()).toString();
+                    }
+                  },
+                ),
+                FlatButton(
+                  key: const ValueKey("confirm_add_node_btn"),
+                  color: Colors.green,
+                  textColor: Colors.white,
+                  child: const Text('OK'),
+                  onPressed: () async {
+                    if (!usingID) {
+                      addKnownNode(_textIPController.text,
+                          int.parse(_textPortController.text));
+                      Navigator.pop(context);
+                    } else {
+                      String nodeip = await DomainRegistry.getNodeIP(
+                          _textIDController.text);
+                      int nodeport = await DomainRegistry.getNodePort(
+                          _textIDController.text);
+
+                      setState(() {
+                        if (nodeip == null || nodeport == null) {
+                          nodeErrorMsg = "The node could not be found";
+                        } else {
+                          nodeErrorMsg = "$nodeip:$nodeport";
+
+                          addKnownNode(_textIPController.text,
+                              int.parse(_textPortController.text));
+                          Navigator.pop(context);
+                        }
+                      });
+                    }
+                  },
                 ),
               ],
-            ),
-            actions: <Widget>[
-              FlatButton(
-                key: const ValueKey("add_self_btn"),
-                // color: Colors.green,
-                textColor: Colors.blue,
-                child: const Text(
-                  'Add self',
-                  style: TextStyle(
-                    decoration: TextDecoration.underline,
-                  ),
-                ),
-                onPressed: () async {
-                  _textIPController.text = await NetworkInfo().getWifiIP();
-                  _textPortController.text =
-                      (await BlockchainServer.getPort()).toString();
-                },
-              ),
-              FlatButton(
-                key: const ValueKey("confirm_add_node_btn"),
-                color: Colors.green,
-                textColor: Colors.white,
-                child: const Text('OK'),
-                onPressed: () {
-                  Navigator.pop(context,
-                      [_textIPController.text, _textPortController.text]);
-                },
-              ),
-            ],
-          );
+            );
+          });
         });
   }
 
@@ -900,10 +802,8 @@ class MyHomePageState extends State<MyHomePage> {
                         shrinkWrap: true,
                         itemCount: KnownNodes.knownNodes.length,
                         itemBuilder: (context, index) {
-                          return Text(
-                              KnownNodes.knownNodes
-                                  .toList()[index]
-                                  .getNodeAddress(),
+                          Node node = KnownNodes.knownNodes.toList()[index];
+                          return Text(getNodeAddress(node.ip, node.port),
                               key: ValueKey("known_node_$index"));
                         }),
                   ),
@@ -946,6 +846,20 @@ class MyHomePageState extends State<MyHomePage> {
 
   void showFileInfoDialog(String fileHash, String uploader) async {
     Map<String, dynamic> fileData = fileHashes[fileHash];
+
+    //convert file hosts IP/ports to ID
+    Map fileHosts = fileData["shardHosts"];
+    Map<String, List> formattedFileHosts = {};
+    fileHosts.forEach((key, value) {
+      List hosts = value;
+      for (String addr in hosts) {
+        if (formattedFileHosts[key] == null) {
+          formattedFileHosts[key] = [];
+        }
+        formattedFileHosts[key].add(DomainRegistry.generateNodeID(addr));
+      }
+    });
+
     return showDialog(
         context: context,
         builder: (context) {
@@ -964,7 +878,7 @@ class MyHomePageState extends State<MyHomePage> {
                     const Flexible(child: Text("Block hash: ")),
                     Flexible(
                         child: SelectableText(
-                      fileData["merkleRootHash"],
+                      fileData["hash"],
                       style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                     ))
                   ],
@@ -1051,7 +965,7 @@ class MyHomePageState extends State<MyHomePage> {
                     const Text("Shard hosts: "),
                     Flexible(
                       child: Flexible(
-                        child: SelectableText(fileData["shardHosts"].toString(),
+                        child: SelectableText(formattedFileHosts.toString(),
                             style: TextStyle(
                                 fontSize: 14, color: Colors.grey[600])),
                       ),
@@ -1084,9 +998,7 @@ class MyHomePageState extends State<MyHomePage> {
         });
   }
 
-  Future<Map<String, dynamic>> getBlockchain() async {
-    return BlockChain.loadBlockchain();
-  }
+  ///
 
   Widget displayBlockchainFiles(Map<String, dynamic> blockchain) {
     _refreshBlockchain();
@@ -1117,7 +1029,7 @@ class MyHomePageState extends State<MyHomePage> {
           Map<String, dynamic> block =
               fileHashes[fileHashes.keys.elementAt(index)];
           String fileName = block["fileName"];
-          String fileHash = block["merkleRootHash"];
+          String fileHash = block["hash"];
           int fileSizeBytes = block['fileSizeBytes'];
           int numberOfShards = block['shardsCreated'];
           bool canFileBeDeleted = block['fileHost'] == _domainRegistry.getID();
@@ -1271,7 +1183,7 @@ class MyHomePageState extends State<MyHomePage> {
         });
   }
 
-  void rfBChain() {
+  void refreshBlockchainAndState() {
     setState(() {
       _refreshBlockchain();
     });
@@ -1286,7 +1198,7 @@ class MyHomePageState extends State<MyHomePage> {
       blockchain = blockchainData;
     } else {
       deletedFileHashes = await getDeletedFiles();
-      blockchain = await getBlockchain();
+      blockchain = await BlockChain.loadBlockchain();
     }
 
     fileHashes.clear();
@@ -1295,7 +1207,7 @@ class MyHomePageState extends State<MyHomePage> {
       String fileName = blockchain["blocks"][fileHash]["fileName"];
       if (fileName != "genesis" &&
           key["event"] != Block.deleteEvent &&
-          !deletedFileHashes.contains(key["merkleRootHash"])) {
+          !deletedFileHashes.contains(key["hash"])) {
         trie.insert(fileName);
 
         fileHashes[fileHash] = blockchain["blocks"][fileHash];
@@ -1306,7 +1218,7 @@ class MyHomePageState extends State<MyHomePage> {
   Future<List<String>> getDeletedFiles(
       {Map<String, dynamic> blockchainData}) async {
     List<String> filesDeleted = [];
-    getBlockchain().whenComplete(() {
+    BlockChain.loadBlockchain().whenComplete(() {
       List<Block> blocks = BlockChain.blocks;
 
       for (Block block in blocks) {
@@ -1326,20 +1238,19 @@ class MyHomePageState extends State<MyHomePage> {
   @override
   void initState() {
     super.initState();
-
+    initKnownNodes();
     BlockchainServer.startServer(context, this);
 
     _domainRegistry = DomainRegistry(ip, port);
 
     requestStorageLocationDialog();
-    _domainRegistry.generateID(context);
+    _domainRegistry.generateAndSaveID(context);
     UserSession.saveNewUser();
     _refreshBlockchain();
   }
 
   @override
   Widget build(BuildContext context) {
-    // _refreshBlockchain();
     return SafeArea(
       child: Scaffold(
         backgroundColor: Colors.white,
@@ -1376,18 +1287,6 @@ class MyHomePageState extends State<MyHomePage> {
                             () {
                           showKnownNodesDialog();
                         }, key: const ValueKey("view_known_nodes_btn")),
-                        FutureBuilder(
-                            future: BlockchainServer.getPort(),
-                            builder: (context, snapshot) {
-                              if (snapshot.hasData) {
-                                int port = snapshot.data;
-                                return SelectableText(
-                                    "port: ${port.toString()}");
-                              } else {
-                                return const CircularProgressIndicator();
-                              }
-                            }),
-                        Container(width: 40),
                         Container(
                             margin: const EdgeInsets.only(right: 10),
                             child: AvailableTokensView(_token))
@@ -1539,7 +1438,7 @@ class MyHomePageState extends State<MyHomePage> {
                 ),
                 blockchainData == null
                     ? FutureBuilder(
-                        future: getBlockchain(),
+                        future: BlockChain.loadBlockchain(),
                         builder: (context, snapshot) {
                           if (snapshot.hasData) {
                             Map<String, dynamic> data = snapshot.data;
@@ -1606,7 +1505,7 @@ class MyHomePageState extends State<MyHomePage> {
                                 "CLEAR BLOCKCHAIN", Icons.clear_all, () {
                               BlockChain.clearBlockchain();
 
-                              rfBChain();
+                              refreshBlockchainAndState();
                             }),
                           ),
                           Container(
@@ -1616,7 +1515,8 @@ class MyHomePageState extends State<MyHomePage> {
                             child: createTopNavBarButton(
                                 "VIEW BLOCKCHAIN", Icons.list, () async {
                               Map<String, dynamic> blockchain =
-                                  blockchainData ?? await getBlockchain();
+                                  blockchainData ??
+                                      await BlockChain.loadBlockchain();
 
                               printBlockchainDialog(blockchain);
                             }, key: const ValueKey("view_blockchain_btn")),

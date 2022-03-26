@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
@@ -16,5 +18,23 @@ class FileHandler {
     }
 
     return fileAddress;
+  }
+
+  static Future<bool> saveFile(
+      List<int> fileByteData, String savePath, bool decrypt) async {
+    try {
+      (await File(savePath).writeAsBytes(fileByteData, mode: FileMode.write))
+          .create(recursive: true);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+
+  static Future<PlatformFile> getPlatformFile() async {
+    FilePickerResult result = await FilePicker.platform.pickFiles();
+
+    return result.files.single;
   }
 }

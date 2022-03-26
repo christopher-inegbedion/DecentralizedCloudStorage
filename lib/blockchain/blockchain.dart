@@ -8,13 +8,12 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:testwindowsapp/blockchain_server.dart';
+import 'package:testwindowsapp/server.dart';
 import 'package:testwindowsapp/domain_regisrty.dart';
-import 'package:testwindowsapp/node.dart';
 import 'package:testwindowsapp/token.dart';
 import 'package:http/http.dart' as http;
 
-import 'utils.dart';
+import '../utils.dart';
 
 class BlockChain {
   BlockChain._();
@@ -55,7 +54,6 @@ class BlockChain {
         fileSizeBytes,
         shardByteHashString,
         shardHosts.length,
-        Block.uploadEvent,
         eventCost,
         hosts,
         timeCreated,
@@ -67,14 +65,13 @@ class BlockChain {
     return newBlock;
   }
 
-  static Block createDeleteBlock(String fileName, String blockHash,
-      String shardByteHash, String fileHost) {
+  static Block createDeleteBlock(
+      String fileName, String hash, String shardByteHash, String fileHost) {
     Block newDeleteBlock = Block.delete(
         fileName + "-deleted",
-        blockHash,
+        hash,
         shardByteHash,
         DateTime.now().millisecondsSinceEpoch,
-        Block.deleteEvent,
         fileHost,
         Block.getRandString(),
         "");
@@ -111,8 +108,8 @@ class BlockChain {
     });
     updatingBlockchain = true;
     for (Block block in _temporaryBlockPool) {
-      block.prevBlockHash = blocks[blocks.length - 1].merkleTreeRootHash;
-      block.merkleTreeRootHash = block.createBlockHash();
+      block.prevBlockHash = blocks[blocks.length - 1].hash;
+      block.hash = block.createBlockHash();
       blocks.add(block);
       _saveBlockchain();
     }
@@ -202,10 +199,10 @@ class BlockChain {
     Map<String, dynamic> blocksJson = {};
     for (Block block in blocks) {
       if (block.event == Block.uploadEvent) {
-        blocksJson[block.toUploadBlockJson()["merkleRootHash"]] =
+        blocksJson[block.toUploadBlockJson()["hash"]] =
             block.toUploadBlockJson();
       } else if (block.event == Block.deleteEvent) {
-        blocksJson[block.toDeleteBlockJson()["merkleRootHash"]] =
+        blocksJson[block.toDeleteBlockJson()["hash"]] =
             block.toDeleteBlockJson();
       }
     }
@@ -234,6 +231,7 @@ class BlockChain {
 class Block {
   static const String deleteEvent = "delete";
   static const String uploadEvent = "upload";
+  static const int saltLength = 10;
 
   String blockFileHash;
   String fileName;
@@ -249,11 +247,7 @@ class Block {
   List<String> fileHashes = [];
   String salt;
   String prevBlockHash;
-  String merkleTreeRootHash;
-
-  static const int saltLength = 10;
-
-  Block._();
+  String hash;
 
   Block.upload(
       this.fileName,
@@ -261,24 +255,28 @@ class Block {
       this.fileSizeBytes,
       this.shardByteHash,
       this.shardsCreated,
-      this.event,
       this.eventCost,
       this.shardHosts,
       this.timeCreated,
       this.fileHost,
       this.fileHashes,
       this.salt,
-      this.prevBlockHash);
+      this.prevBlockHash) {
+    event = uploadEvent;
+  }
 
   Block.delete(
       this.fileName,
       this.blockFileHash,
       this.shardByteHash,
       this.timeCreated,
-      this.event,
       this.fileHost,
       this.salt,
-      this.prevBlockHash);
+      this.prevBlockHash) {
+    event = deleteEvent;
+  }
+
+  Block._();
 
   Block.genesis() {
     fileName = "genesis";
@@ -294,7 +292,7 @@ class Block {
     salt = "salt";
     prevBlockHash = "-";
 
-    merkleTreeRootHash = createBlockHash();
+    hash = createBlockHash();
   }
 
   Block.fromJsonUB(Map<String, dynamic> blockData) {
@@ -311,7 +309,7 @@ class Block {
     fileHashes = List<String>.from(blockData["fileHashes"]);
     salt = blockData["salt"];
     prevBlockHash = blockData["prevBlockHash"];
-    merkleTreeRootHash = blockData["merkleRootHash"];
+    hash = blockData["hash"];
   }
 
   Block.fromJsonDB(Map<String, dynamic> blockData) {
@@ -323,7 +321,7 @@ class Block {
     fileHost = blockData["fileHost"];
     salt = blockData["salt"];
     prevBlockHash = blockData["prevBlockHash"];
-    merkleTreeRootHash = blockData["merkleRootHash"];
+    hash = blockData["hash"];
   }
 
   static Uint8List sha256(data) {
@@ -358,7 +356,7 @@ class Block {
       "fileHost": fileHost,
       "fileHashes": fileHashes,
       "salt": salt,
-      "merkleRootHash": merkleTreeRootHash,
+      "hash": hash,
       "prevBlockHash": prevBlockHash,
     };
   }
@@ -372,7 +370,7 @@ class Block {
       "event": event,
       "fileHost": fileHost,
       "salt": salt,
-      "merkleRootHash": merkleTreeRootHash,
+      "hash": hash,
       "prevBlockHash": prevBlockHash
     };
   }

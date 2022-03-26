@@ -27,38 +27,45 @@ class Token {
     UserSession().saveTokens(availableTokens);
   }
 
+  ///This function sets the tokens a user had according to
+  ///the amount of minutes they have spent on the app.
   Future<double> incrementTokens(int minsElapsed) async {
-    double val = (double.parse(_tokenFormula(minsElapsed).toStringAsFixed(3)) -
-            availableTokens) +
+    //Calculate the amount of tokens the user is due given the number of minutes elapsed
+    double val = (double.parse(_tokenFormula(minsElapsed).toStringAsFixed(3))) +
         availableTokens;
 
-    if (val >= await UserSession().getSavedTokenAmount()) {
-      availableTokens =
-          (double.parse(_tokenFormula(minsElapsed).toStringAsFixed(3)) -
-                  availableTokens) +
-              availableTokens;
-    } else {
-      availableTokens = await UserSession().getSavedTokenAmount();
-    }
+    //Subtract 'val' from the vurrent tokens available to the user
+    availableTokens =
+        val;
 
-    UserSession().saveTokens(availableTokens);
+    //Save the user's tokens
+    // UserSession().saveTokens(availableTokens);
 
     return val;
   }
-
+  
+  ///This function deducts an amount of tokens equivalent to the
+  ///amount of time spent offline from the amount of tokens the user
+  ///has available.
   Future deductTokens() async {
+    //Retrieve both the last login time and the current login time
     DateTime lastLoginTime = DateTime.fromMillisecondsSinceEpoch(
         await UserSession().getLastLoginTime());
     DateTime currentLoginTime = DateTime.now();
 
+    //Calculate how many minutes the user was offline for
     Duration diff = currentLoginTime.difference(lastLoginTime);
     int minsElapsed = diff.inMinutes;
 
+    //Deduct the user's tokens
     availableTokens = availableTokens -
         double.parse(_tokenFormula(minsElapsed).toStringAsFixed(3));
     if (availableTokens < 0) {
       availableTokens = 0;
     }
+
+    //Save the user's tokens
+    UserSession().saveTokens(availableTokens);
   }
 
   static double calculateFileCost(int bytes) {

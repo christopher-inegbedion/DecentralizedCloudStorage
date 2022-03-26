@@ -4,6 +4,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart' as dio;
+import 'package:dio/dio.dart' as dio;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:network_info_plus/network_info_plus.dart';
@@ -12,13 +13,14 @@ import 'package:shelf_router/shelf_router.dart' as shelf_router;
 import 'package:shelf/shelf.dart';
 import 'package:shelf_multipart/form_data.dart';
 import 'package:shelf/shelf_io.dart' as io;
-import 'package:testwindowsapp/blockchain.dart';
+import 'package:testwindowsapp/blockchain/blockchain.dart';
 import 'package:testwindowsapp/known_nodes.dart';
 import 'package:testwindowsapp/message_handler.dart';
 import "package:upnp/router.dart" as router;
 import 'package:upnp/upnp.dart' as upnp;
 import 'main.dart';
 import 'node.dart';
+import 'utils.dart';
 
 class BlockchainServer {
   MyHomePageState state;
@@ -32,7 +34,7 @@ class BlockchainServer {
 
   static Future<bool> isNodeLive(String addr) async {
     try {
-      final result = dio.Dio().get(addr);
+      final result = dio.Dio().get(addr + "/live_test");
       return (await result).data != null;
     } catch (_) {
       return false;
@@ -40,15 +42,19 @@ class BlockchainServer {
   }
 
   static Future<int> getPort() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    int port = prefs.getInt("port");
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      int port = prefs.getInt("port");
 
-    if (port == null) {
-      port = Random().nextInt(60000);
-      prefs.setInt("port", port);
+      if (port == null) {
+        port = Random().nextInt(60000);
+        prefs.setInt("port", port);
+      }
+
+      return port ?? 1234;
+    } catch (e) {
+      return Random().nextInt(60000);
     }
-
-    return port ?? 1234;
   }
 
   static Future<String> getIP() async {
@@ -77,6 +83,10 @@ class BlockchainServer {
       return Response.ok('hello-world');
     });
 
+    app.get("/live_test", (Request request) async {
+      return Response.ok("live");
+    });
+
     ///Called by an external node to add this node as a known node. The external node is also
     ///added to the this node's known nodes list.
     app.post("/add_node", (Request request) async {
@@ -88,7 +98,7 @@ class BlockchainServer {
       String ip = parameters["addingNodeIp"];
       int port = int.parse(parameters["addingNodePort"]);
 
-      KnownNodes.addNode(ip, port, fromServer: true);
+      KnownNodes.addNode(ip, port);
       return Response.ok("done");
     });
 
@@ -118,8 +128,9 @@ class BlockchainServer {
             };
 
             dio.FormData formData = dio.FormData.fromMap(formMapData);
+            String nodeAddr = getNodeAddress(node.ip, node.port);
             await dio.Dio().post(
-              "http://${node.getNodeAddress()}/send_shard",
+              "http://$nodeAddr/send_shard",
               data: formData,
             );
           });
@@ -161,8 +172,9 @@ class BlockchainServer {
           .where((block) => block.timeCreated == tempBlock.timeCreated)
           .isEmpty) {
         state.getKnownNodes().forEach((node) {
-          BlockChain.sendBlockchain(node.getNodeAddress(), tempBlock,
-              fromServer: true);
+          String nodeAddr = getNodeAddress(node.ip, node.port);
+
+          BlockChain.sendBlockchain(nodeAddr, tempBlock, fromServer: true);
         });
 
         BlockChain.addBlockToTempPool(tempBlock);
@@ -170,7 +182,7 @@ class BlockchainServer {
         if (!BlockChain.updatingBlockchain) {
           BlockChain.addBlockToBlockchain();
         }
-        state.rfBChain();
+        state.refreshBlockchainAndState();
       }
 
       return Response.ok("done");
@@ -191,8 +203,9 @@ class BlockchainServer {
 
       List<Node> nodesSendingTo = [];
       for (var node in KnownNodes.knownNodes) {
-        if (node.getNodeAddress() != sender) {
-          nodes.add(node.getNodeAddress());
+        String nodeAddr = getNodeAddress(node.ip, node.port);
+        if (nodeAddr != sender) {
+          nodes.add(nodeAddr);
           nodesSendingTo.add(node);
         }
       }
@@ -200,8 +213,10 @@ class BlockchainServer {
       if (nodesSendingTo.isNotEmpty) {
         if (depth != 0) {
           for (var node in nodesSendingTo) {
+            String nodeAddr = getNodeAddress(node.ip, node.port);
+
             var r = await dio.Dio().post(
-              "http://${node.getNodeAddress()}/send_known_nodes",
+              "http://$nodeAddr/send_known_nodes",
               data: {
                 "depth": depth.toString(),
                 "nodes": nodes.toList(),
@@ -289,6 +304,58 @@ class BlockchainServer {
         MessageHandler.showFailureMessage(
             context, "Your router does not support port forwarding");
       }
+    }
+  }
+
+  static Future<Map<String, Set>> getBackupNodes(
+      List<Node> nodesReceiving, int depth) async {
+    String myAddress = await getMyAddress();
+    Map<String, Set> backupNodes = {};
+
+    for (int i = 0; i < nodesReceiving.length; i++) {
+      Node node = KnownNodes.knownNodes.toList()[i];
+      String nodeAddr = getNodeAddress(node.ip, node.port);
+
+      var r = await dio.Dio().post(
+        "http://${getNodeAddress(nodesReceiving[0].ip, nodesReceiving[0].port)}/send_known_nodes",
+        data: {
+          "depth": depth.toString(),
+          "nodes": [],
+          "origin": myAddress,
+          "sender": myAddress
+        },
+      );
+
+      backupNodes[i.toString()] = {...jsonDecode(r.data)};
+      backupNodes[i.toString()].add(nodeAddr);
+    }
+
+    return backupNodes;
+  }
+
+  static void sendBlocksToKnownNodes(Block tempBlock) async {
+    String myIP = await NetworkInfo().getWifiIP();
+
+    Set<Node> nodesReceivingShard = {};
+    int myPort = await BlockchainServer.getPort();
+
+    Node self = Node(myIP, myPort);
+
+    nodesReceivingShard.add(self);
+
+    for (int i = 0; i < KnownNodes.knownNodes.length; i++) {
+      Node node = KnownNodes.knownNodes.toList()[i];
+      String nodeAddr = getNodeAddress(node.ip, node.port);
+
+      if (nodeAddr != await getMyAddress()) {
+        nodesReceivingShard.add(KnownNodes.knownNodes.toList()[i]);
+      }
+    }
+
+    for (Node node in nodesReceivingShard) {
+      String nodeAddr = getNodeAddress(node.ip, node.port);
+
+      BlockChain.sendBlockchain(nodeAddr, tempBlock);
     }
   }
 }

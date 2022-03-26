@@ -23,8 +23,8 @@ class AvailableTokensViewState extends State<AvailableTokensView> {
   void _updateTokens() async {
     int minsElapsed = 0;
     if (mounted) {
-      _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        minsElapsed += 10;
+      _timer = Timer.periodic(const Duration(seconds: 50), (timer) {
+        minsElapsed += 50;
         setState(() {
           token.incrementTokens(minsElapsed);
         });
@@ -35,13 +35,15 @@ class AvailableTokensViewState extends State<AvailableTokensView> {
   @override
   void initState() {
     super.initState();
-    UserSession().getSavedTokenAmount().then((amount) {
-      setState(() {
-        token.availableTokens = amount;
-      });
-    }).whenComplete(() {
-      _updateTokens();
-    });
+    // UserSession().getSavedTokenAmount().then((amount) {
+    //   setState(() {
+    //     token.availableTokens = amount;
+    //   });
+    // }).whenComplete(() {
+    //   _updateTokens();
+    // });
+
+    _updateTokens();
   }
 
   @override

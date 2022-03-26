@@ -1,42 +1,31 @@
+import 'package:testwindowsapp/constants.dart';
 import 'package:testwindowsapp/node.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:network_info_plus/network_info_plus.dart';
+import 'package:testwindowsapp/utils.dart';
 
-import 'blockchain_server.dart';
+import 'server.dart';
 
 class KnownNodes {
-  static const int maximumKnownNodesAllowed = 10;
   static Set<Node> knownNodes = {};
 
-  static Future addNode(String ip, int port, {bool fromServer = false}) async {
-    String address = "$ip:$port";
+  //Add a new node to the list of known nodes
+  static Future addNode(String ip, int port) async {
     Node newNode = Node(ip, port);
 
-    if (knownNodes.length == maximumKnownNodesAllowed) {
+    if (knownNodes.length == Constants.maxNumOfKnownNodes) {
       throw Exception("Maximum known nodes capacity reached");
     }
-      knownNodes.add(newNode);
 
-    try {
-      String myIP = await NetworkInfo().getWifiIP();
-      int myPort = await BlockchainServer.getPort();
-
-      if (!fromServer) {
-        await Dio().post("http://$address/add_node",
-            data: FormData.fromMap({
-              "addingNodeIp": myIP,
-              "addingNodePort": myPort,
-              "addr": address,
-            }));
-      }
-
+    try {      //This prevents the same node from being added multiple times
       for (Node node in knownNodes) {
-        if (node.getNodeAddress() == "$ip:$port") {
+        if (getNodeAddress(node.ip, node.port) == "$ip:$port") {
           return;
         }
       }
-      // print(knownNodes);
+
+      knownNodes.add(newNode);
     } catch (e, stacktrace) {
       debugPrint(e.toString());
       debugPrint(stacktrace.toString());

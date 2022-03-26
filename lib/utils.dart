@@ -1,8 +1,13 @@
 import 'dart:io';
 import 'package:crypto/crypto.dart' as crypto;
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 
 import 'package:intl/intl.dart';
+import 'package:network_info_plus/network_info_plus.dart';
+import 'package:testwindowsapp/token.dart';
+
+import 'server.dart';
 
 String convertTimestampToDate(int value) {
   var date = DateTime.fromMillisecondsSinceEpoch(value);
@@ -18,4 +23,30 @@ String createFileHash(List<int> byteData, {bool decrypt=true}) {
   } catch (e, trace) {
     return "";
   }
+}
+
+
+ String getFileName(PlatformFile file, FilePickerResult result) {
+    String fileExtension = file.extension;
+
+    return file.name
+        .substring(0, (file.name.length - 1) - fileExtension.length);
+  }
+
+String getNodeAddress(String ip, int port) {
+  return "$ip:$port";
+}
+
+
+  Future<String> getMyAddress() async {
+    String ip = await NetworkInfo().getWifiIP();
+    int port = await BlockchainServer.getPort();
+
+    return "$ip:$port";
+  }
+  
+///Verifies whether the user can upload/download a file
+bool canActionComplete(double tokenCost) {
+  double availableTokes = Token.getInstance().availableTokens;
+  return availableTokes >= tokenCost;
 }
