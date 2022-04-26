@@ -31,7 +31,7 @@ class Token {
   ///the amount of minutes they have spent on the app.
   Future<double> incrementTokens(int minsElapsed) async {
     //Calculate the amount of tokens the user is due given the number of minutes elapsed
-    double val = (double.parse(_tokenFormula(minsElapsed).toStringAsFixed(3))) +
+    double val = (double.parse(tokenFormula(minsElapsed).toStringAsFixed(3))) +
         availableTokens;
 
     //Subtract 'val' from the vurrent tokens available to the user
@@ -59,7 +59,7 @@ class Token {
 
     //Deduct the user's tokens
     availableTokens = availableTokens -
-        double.parse(_tokenFormula(minsElapsed).toStringAsFixed(3));
+        double.parse(tokenFormula(minsElapsed).toStringAsFixed(3));
     if (availableTokens < 0) {
       availableTokens = 0;
     }
@@ -72,7 +72,7 @@ class Token {
     return (9.31 * pow(10, -10)) * bytes;
   }
 
-  double _tokenFormula(int minsElapsed) {
+  double tokenFormula(int minsElapsed) {
     double a = 50 - (timeToConsumeAvailStorage / 2);
     double b = 50 - (timeToConsumeShardDataStoredStorage / 2);
     double j = -((log((m / 1) - 1)) / a);

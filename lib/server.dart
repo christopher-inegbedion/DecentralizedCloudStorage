@@ -102,8 +102,7 @@ class BlockchainServer {
       return Response.ok("done");
     });
 
-    ///Called by an external node to send a shard to this device. This node also sends
-    ///the shard to its known nodes if
+    ///Called by an external node to send a shard to this device.
     app.post('/send_shard', (Request request) async {
       final parameters = <String, String>{
         await for (final formData in request.multipartFormData)
@@ -155,11 +154,14 @@ class BlockchainServer {
       return Response.ok(fileBytes.toString());
     });
 
+    ///Called by an external node to send a new block from its device to this.
     app.post("/send_block", (Request request) async {
       final parameters = jsonDecode(await request.readAsString());
 
       Map<String, dynamic> block = jsonDecode(parameters["block"]);
       Block tempBlock;
+
+      //Convert the block to an upload/delete block
       if (block["event"] == Block.uploadEvent) {
         tempBlock = Block.fromJsonUB(block);
       } else if (block["event"] == Block.deleteEvent) {
@@ -168,20 +170,33 @@ class BlockchainServer {
 
       var blocks = BlockChain.blocks;
 
+      //This prevents a block from being sent in an infinite loop between
+      //two nodes who have each other as known nodes. If the block being
+      //sent is already in the blockchain then the loop fails and the
+      //function quits
       if (blocks
           .where((block) => block.timeCreated == tempBlock.timeCreated)
           .isEmpty) {
+
+        //Send the block to this node's known nodes
         state.getKnownNodes().forEach((node) {
           String nodeAddr = getNodeAddress(node.ip, node.port);
 
-          BlockChain.sendBlockchain(nodeAddr, tempBlock, fromServer: true);
+          BlockChain.sendBlock(nodeAddr, tempBlock);
         });
 
+        //The temporary block pool was created in situations where multiple blocks might be 
+        //received at the same time
         BlockChain.addBlockToTempPool(tempBlock);
 
+        //Even if a blockhain is update being updated a new temp. block has been added to the
+        //temp. block pool, the new temp. block will still get added to the blockchain as, the
+        //addBlockToBlockchain() function always checks if a there is a new block in the 
+        //temp. block pool before ending.
         if (!BlockChain.updatingBlockchain) {
           BlockChain.addBlockToBlockchain();
         }
+        
         state.refreshBlockchainAndState();
       }
 
@@ -355,7 +370,7 @@ class BlockchainServer {
     for (Node node in nodesReceivingShard) {
       String nodeAddr = getNodeAddress(node.ip, node.port);
 
-      BlockChain.sendBlockchain(nodeAddr, tempBlock);
+      BlockChain.sendBlock(nodeAddr, tempBlock);
     }
   }
 }

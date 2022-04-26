@@ -33,6 +33,7 @@ class DomainRegistry {
     saveID(_id, ip, port, context);
   }
 
+  ///Save the ID to the database
   void saveID(String id, String ip, int port, BuildContext context) async {
     try {
       await http.put(

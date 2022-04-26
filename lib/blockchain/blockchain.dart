@@ -19,9 +19,11 @@ class BlockChain {
   BlockChain._();
 
   static List<Block> blocks = [Block.genesis()];
+  
   static List<Block> _temporaryBlockPool = [];
   static bool updatingBlockchain = false;
 
+  ///Creates a temporary upload block
   static Future<Block> createUploadBlock(
       List<List<int>> shardByteData,
       String fileExtension,
@@ -48,6 +50,7 @@ class BlockChain {
     //convert shard hosts ip to port
     Map<String, List> hosts = _convertShardHostsIpToId(shardHosts);
 
+    String previousBlockHash = "";
     Block newBlock = Block.upload(
         fileName,
         fileExtension,
@@ -60,13 +63,15 @@ class BlockChain {
         fileHost,
         fileHashes,
         merkleHashSalt,
-        "");
+        previousBlockHash);
 
     return newBlock;
   }
 
+  ///Creates a temporary delete block
   static Block createDeleteBlock(
       String fileName, String hash, String shardByteHash, String fileHost) {
+    String previousBlockHash = "";
     Block newDeleteBlock = Block.delete(
         fileName + "-deleted",
         hash,
@@ -74,13 +79,13 @@ class BlockChain {
         DateTime.now().millisecondsSinceEpoch,
         fileHost,
         Block.getRandString(),
-        "");
+        previousBlockHash);
 
     return newDeleteBlock;
   }
 
-  static void sendBlockchain(String receipientAddr, Block newBlock,
-      {bool fromServer = false}) async {
+  ///Sends a new block ``newBlock`` to a node with address ``receipientAddr``
+  static void sendBlock(String receipientAddr, Block newBlock) async {
     String ip = await BlockchainServer.getIP();
     int port = await BlockchainServer.getPort();
     await http.post(Uri.parse("http://$receipientAddr/send_block"),
@@ -246,8 +251,8 @@ class Block {
   String fileHost;
   List<String> fileHashes = [];
   String salt;
-  String prevBlockHash;
-  String hash;
+  String prevBlockHash = "";
+  String hash = "";
 
   Block.upload(
       this.fileName,
@@ -265,14 +270,8 @@ class Block {
     event = uploadEvent;
   }
 
-  Block.delete(
-      this.fileName,
-      this.blockFileHash,
-      this.shardByteHash,
-      this.timeCreated,
-      this.fileHost,
-      this.salt,
-      this.prevBlockHash) {
+  Block.delete(this.fileName, this.blockFileHash, this.shardByteHash,
+      this.timeCreated, this.fileHost, this.salt, this.prevBlockHash) {
     event = deleteEvent;
   }
 

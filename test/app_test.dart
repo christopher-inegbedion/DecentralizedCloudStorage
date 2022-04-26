@@ -164,14 +164,14 @@ void main() {
     test("Token formula is functional", () async {
       Token token = Token.getInstance();
 
-      double tokensExpected = await token.incrementTokens(10);
-      expect(tokensExpected, 0.762);
+      double tokensExpected = token.tokenFormula(10);
+      expect(tokensExpected, 0.7619050016322932);
 
-      double tokensExpected2 = await token.incrementTokens(20);
-      expect(tokensExpected2, 0.816);
+      double tokensExpected2 = token.tokenFormula(20);
+      expect(tokensExpected2, 0.8155518681362466);
 
-      double tokensExpected3 = await token.incrementTokens(50);
-      expect(tokensExpected3, 1);
+      double tokensExpected3 = token.tokenFormula(50);
+      expect(tokensExpected3, 1.0000000000000004);
     });
 
     test("A node does not have sufficient tokens", () async {

@@ -48,12 +48,44 @@ void main() async {
 
   _token.deductTokens();
 
-  runApp(const MyApp());
+  const Map<String, dynamic> data = {
+    "blocks": {
+      "644cec9e0d3a8356689118c10364afc359bb5c1d4a7818acea545b4b85c3b146": {
+        "fileName": "buffalo",
+        "fileExtension": "py",
+        "fileSizeBytes": 708,
+        "shardByteHash":
+            "18dc54b865ee708d70457ab81c7ac02499191360559ebcdf141c5f24e8f353c3",
+        "shardsCreated": 1,
+        "event": "upload",
+        "eventCost": 6.59148e-7,
+        "shardHosts": {
+          "0": [
+            "3558ff052c1848e3e9c03f5d00dec23159dfbc81ccf88753ac513f3c2945e087"
+          ]
+        },
+        "timeCreated": 1647257861818,
+        "fileHost":
+            "3558ff052c1848e3e9c03f5d00dec23159dfbc81ccf88753ac513f3c2945e087",
+        "fileHashes": [
+          "18dc54b865ee708d70457ab81c7ac02499191360559ebcdf141c5f24e8f353c3"
+        ],
+        "salt": "V1KqKKmS7gPzxQ==",
+        "hash":
+            "644cec9e0d3a8356689118c10364afc359bb5c1d4a7818acea545b4b85c3b146",
+        "prevBlockHash":
+            "8062d40935e0c4cc1ff94735417620dea098c90af96a72de271b84e5fdde1040"
+      }
+    }
+  };
+
+  runApp(const MyApp(blockchainData: data));
 }
 
-bool verifyFileShard(List<String> fileHashes, List<int> byteData) {
+///Verify the hash of a file
+bool verifyFileShard(List<String> fileHashes, List<int> shard) {
   try {
-    String hashByteData = createFileHash(byteData);
+    String hashByteData = createFileHash(shard);
 
     return fileHashes.contains(hashByteData);
   } catch (e, trace) {
@@ -61,6 +93,10 @@ bool verifyFileShard(List<String> fileHashes, List<int> byteData) {
   }
 }
 
+///This function contains functionality that would cause UI freezes
+///and so is run with the compute method in a seperate Isolate
+///
+///Sends shard data to a node
 void _sendShardToNode(Map<String, dynamic> args) async {
   String nodeAddr = args["receipientAddr"];
   String fileName = args["fileName"];
@@ -74,7 +110,7 @@ void _sendShardToNode(Map<String, dynamic> args) async {
   };
 
   FormData formData = FormData.fromMap(formMapData);
-  var result = await Dio().post(
+  await Dio().post(
     "http://$nodeAddr/send_shard",
     data: formData,
   );
@@ -204,19 +240,24 @@ class MyHomePageState extends State<MyHomePage> {
     return liveNodes;
   }
 
+  ///Upload a file to the network.
   Future<bool> uploadFile() async {
     if (KnownNodes.knownNodes.isEmpty) {
       MessageHandler.showFailureMessage(context, "You have no known nodes");
       return false;
     }
-
-    //select file
-    FilePickerResult result = await FilePicker.platform.pickFiles();
-    PlatformFile platformFile = result.files.single;
-    File file = File((platformFile.path).toString());
     int depth = 2;
 
+    //select file
+    FilePickerResult result =
+        await FilePicker.platform.pickFiles(); //Starts the file selecter dialog
+    PlatformFile platformFile = result.files.single; //The file selected
+    File file = File(
+        (platformFile.path).toString()); //The file selected as a File object
+
+    //Open the file for reading
     final readFile = await File(file.path).open();
+
     int fileSizeBytes = await readFile.length();
 
     //calcualte how many partitions are required
@@ -248,8 +289,9 @@ class MyHomePageState extends State<MyHomePage> {
       }
 
       //Create list of nodes each shard can be sent to
-      Map<String, Set> nodesReceiving = await BlockchainServer.getBackupNodes(
-          getNodesReceivingShard(partitions), depth);
+      Map<String, Set> nodesReceivingShard =
+          await BlockchainServer.getBackupNodes(
+              getNodesReceivingShard(partitions), depth);
 
       //get the nodes that are online
       List<Node> liveNodes = getLiveKnownNodes();
@@ -259,11 +301,12 @@ class MyHomePageState extends State<MyHomePage> {
             context, "Not enough known nodes are online");
         return false;
       }
+
       //send shard byte data to selected known nodes
       for (int i = 0; i < partitions; i++) {
-        for (String receivingNodeAddr in nodesReceiving[i.toString()]) {
-          _sendShard(receivingNodeAddr, "$fileName-$i", depth,
-                  f: partitionFiles[i])
+        for (String receivingNodeAddr in nodesReceivingShard[i.toString()]) {
+          _sendShard(
+                  receivingNodeAddr, "$fileName-$i", depth, partitionFiles[i])
               .catchError((e, st) {
             MessageHandler.showFailureMessage(context, e.toString());
             return;
@@ -272,7 +315,7 @@ class MyHomePageState extends State<MyHomePage> {
       }
 
       Map<String, List> shardHosts = {};
-      nodesReceiving.forEach((key, value) {
+      nodesReceivingShard.forEach((key, value) {
         shardHosts[key] = value.toList();
       });
 
@@ -318,7 +361,16 @@ class MyHomePageState extends State<MyHomePage> {
               "http://$nodeAddr/send_file",
               data: {"fileName": "$fileName-$key"});
           List<int> byteArray = List<int>.from(json.decode(response.data));
-          fileShardData.add(byteArray);
+
+          //If a shard has been verified continue to the next shard, else download
+          //the shard from the next node hosting the shard
+          if (verifyFileShard(fileHashes, byteArray)) {
+            fileShardData.add(byteArray);
+            return;
+          } else {
+            MessageHandler.showFailureMessage(
+                context, "Bad shard from ${shardHosts[key]}");
+          }
 
           return;
         } catch (e) {
@@ -328,14 +380,6 @@ class MyHomePageState extends State<MyHomePage> {
         return;
       });
     }).whenComplete(() async {
-      for (int i = 0; i < fileShardData.length; i++) {
-        var byteArray = fileShardData[i];
-        if (!verifyFileShard(fileHashes, byteArray)) {
-          MessageHandler.showFailureMessage(context, "Bad shard $fileName-$i");
-          return;
-        }
-      }
-
       SharedPreferences prefs = await SharedPreferences.getInstance();
 
       String savePath = prefs.getString("storage_location");
@@ -357,33 +401,36 @@ class MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  Future _sendShard(String receipientAddr, String fileName, int depth,
-      {File f}) async {
+  ///Send a file ``f`` to a node at ``receipientAddr``
+  Future _sendShard(
+      String receipientAddr, String fileName, int depth, File f) async {
+    //The node has to be live to be able to receive a shard
     if (await BlockchainServer.isNodeLive("http://$receipientAddr")) {
-      File file = f;
-
-      if (file == null) {
-        PlatformFile _platformFile = await FileHandler.getPlatformFile();
-        file = File(_platformFile.path);
-      }
-
       try {
+        //Displays a visual progress update to the user
         ProgressDialog pd = ProgressDialog(context: context);
         pd.show(max: 100, msg: "Uploading shard to $receipientAddr...");
+
+        //The compute function can only use primitives to pass data to a function
+        //Hence why a Map is used to send the argument data to the method.
         Map<String, dynamic> args = {
           "receipientAddr": receipientAddr,
           "fileName": fileName,
-          "fileByteData": await file.readAsBytes(),
+          "fileByteData": await f.readAsBytes(),
           "depth": depth
         };
+
+        //Enable the network functionality to be run on a seperate Isolate
+        //to minimize jank (unresponsive UI)
         compute(_sendShardToNode, args).whenComplete(() {
           pd.close();
         });
 
+        //Display a message when the partition has been sent successfully
         MessageHandler.showSuccessMessage(
             context, "Node $receipientAddr has received a partition");
       } catch (e, stacktrace) {
-        MessageHandler.showFailureMessage(context, e.toString());
+        MessageHandler.showFailureMessage(context, "An error occured");
         print(e);
       }
     } else {
@@ -407,11 +454,13 @@ class MyHomePageState extends State<MyHomePage> {
       throw Exception("Permission denied. File not uploaded by you");
     }
 
-    String blockHash = block.hash;
-    Block deleteBlock = BlockChain.createDeleteBlock(
-        fileName, blockHash, block.shardByteHash, _domainRegistry.getID());
+    //This is the hash of the block for the upload file about to be deleted.
+    String blockFileHash = block.hash;
 
-    BlockchainServer.sendBlocksToKnownNodes(deleteBlock);
+    Block tempBlock = BlockChain.createDeleteBlock(
+        fileName, blockFileHash, block.shardByteHash, _domainRegistry.getID());
+
+    BlockchainServer.sendBlocksToKnownNodes(tempBlock);
   }
 
   void addKnownNode(String ip, int port) {
