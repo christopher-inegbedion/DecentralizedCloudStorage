@@ -34,16 +34,11 @@ class Token {
     double val = (double.parse(tokenFormula(minsElapsed).toStringAsFixed(3))) +
         availableTokens;
 
-    //Subtract 'val' from the vurrent tokens available to the user
-    availableTokens =
-        val;
-
-    //Save the user's tokens
-    // UserSession().saveTokens(availableTokens);
+    availableTokens = val;
 
     return val;
   }
-  
+
   ///This function deducts an amount of tokens equivalent to the
   ///amount of time spent offline from the amount of tokens the user
   ///has available.

@@ -19,7 +19,7 @@ class BlockChain {
   BlockChain._();
 
   static List<Block> blocks = [Block.genesis()];
-  
+
   static List<Block> _temporaryBlockPool = [];
   static bool updatingBlockchain = false;
 

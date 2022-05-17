@@ -79,7 +79,7 @@ void main() async {
     }
   };
 
-  runApp(const MyApp(blockchainData: data));
+  runApp(const MyApp());
 }
 
 ///Verify the hash of a file
@@ -152,7 +152,11 @@ class MyHomePage extends StatefulWidget {
 
 class MyHomePageState extends State<MyHomePage> {
   final Map<String, dynamic> blockchainData;
-  MyHomePageState({this.blockchainData});
+  MyHomePageState({this.blockchainData}) {
+    if (this.blockchainData != null) {
+      BlockChain.loadBlockchain(data: blockchainData);
+    }
+  }
 
   GlobalKey<FormState> searchKey = GlobalKey();
   bool searchVisible = false;
@@ -447,8 +451,13 @@ class MyHomePageState extends State<MyHomePage> {
   }
 
   void deleteFile(String fileName, String fileHash) async {
-    Block block = Block.fromJsonUB(
-        (await BlockChain.loadBlockchain())["blocks"][fileHash]);
+    print(fileName);
+    print(fileHash);
+    print(await BlockChain.loadBlockchain());
+    Block block = blockchainData == null
+        ? Block.fromJsonUB(
+            (await BlockChain.loadBlockchain())["blocks"][fileHash])
+        : Block.fromJsonUB(blockchainData["blocks"][fileHash]);
 
     if (block.fileHost != _domainRegistry.getID()) {
       throw Exception("Permission denied. File not uploaded by you");
@@ -840,32 +849,55 @@ class MyHomePageState extends State<MyHomePage> {
     return showDialog(
         context: context,
         builder: (context) {
-          return AlertDialog(
-            title: const Text('Known nodes'),
-            content: KnownNodes.knownNodes.isEmpty
-                ? const Text("Such empty")
-                : SizedBox(
-                    height: 160,
-                    width: 200,
-                    child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: KnownNodes.knownNodes.length,
-                        itemBuilder: (context, index) {
-                          Node node = KnownNodes.knownNodes.toList()[index];
-                          return Text(getNodeAddress(node.ip, node.port),
-                              key: ValueKey("known_node_$index"));
-                        }),
+          return StatefulBuilder(
+            builder: (context, setState) {
+              return AlertDialog(
+                title: const Text('Known nodes'),
+                content: KnownNodes.knownNodes.isEmpty
+                    ? const Text("Such empty")
+                    : SizedBox(
+                        height: 160,
+                        width: 400,
+                        child: ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: KnownNodes.knownNodes.length,
+                            itemBuilder: (context, index) {
+                              Node node = KnownNodes.knownNodes.toList()[index];
+                              return Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(getNodeAddress(node.ip, node.port),
+                                      key: ValueKey("known_node_$index")),
+                                  TextButton(
+                                      onPressed: () {
+                                        print(KnownNodes.knownNodes);
+                                        setState(() {
+                                          KnownNodes.knownNodes
+                                              .removeWhere((n) {
+                                            return node.addr ==
+                                                getNodeAddress(n.ip, n.port);
+                                          });
+                                        });
+                                        print(KnownNodes.knownNodes);
+                                      },
+                                      child: Text("Remove"))
+                                ],
+                              );
+                            }),
+                      ),
+                actions: <Widget>[
+                  FlatButton(
+                    color: Colors.green,
+                    textColor: Colors.white,
+                    child: const Text('OK'),
+                    onPressed: () {
+                      Navigator.pop(context);
+                    },
                   ),
-            actions: <Widget>[
-              FlatButton(
-                color: Colors.green,
-                textColor: Colors.white,
-                child: const Text('OK'),
-                onPressed: () {
-                  Navigator.pop(context);
-                },
-              ),
-            ],
+                ],
+              );
+            },
           );
         });
   }
@@ -1563,9 +1595,7 @@ class MyHomePageState extends State<MyHomePage> {
                                 const EdgeInsets.only(bottom: 10, right: 10),
                             child: createTopNavBarButton(
                                 "VIEW BLOCKCHAIN", Icons.list, () async {
-                              Map<String, dynamic> blockchain =
-                                  blockchainData ??
-                                      await BlockChain.loadBlockchain();
+                              Map<String, dynamic> blockchain = await BlockChain.loadBlockchain();
 
                               printBlockchainDialog(blockchain);
                             }, key: const ValueKey("view_blockchain_btn")),
